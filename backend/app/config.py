@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     WHISPER_LANGUAGE_DEFAULT: str = Field(default="ms")
     WHISPER_CPU_THREADS: int = Field(default=6, ge=1)
     WHISPER_VAD_FILTER: bool = Field(default=True)
-    WHISPER_CONDITION_ON_PREVIOUS_TEXT: bool = Field(default=False)
+    WHISPER_CONDITION_ON_PREVIOUS_TEXT: bool = Field(default=True)
     WHISPER_COMPRESSION_RATIO_THRESHOLD: float = Field(default=2.4, gt=1.0)
     WHISPER_NO_SPEECH_THRESHOLD: float = Field(default=0.6, ge=0.0, le=1.0)
     WHISPER_LOG_PROB_THRESHOLD: float = Field(default=-1.0)

@@ -18,6 +18,7 @@ if str(_BACKEND_ROOT) not in sys.path:
 from app.services.transcribe import format_glossary_prompt  # noqa: E402
 from scripts.benchmark import (  # noqa: E402
     UNSCORED_LABEL,
+    clean_reference_text,
     compute_wer_cer,
     detect_gpu,
     extract_text_for_range,
@@ -117,7 +118,7 @@ def find_false_glossary_insertions(
     glossary_items: tuple[str, ...] = GLOSSARY_ITEMS,
 ) -> list[dict]:
     """Return glossary terms/tokens present in hypothesis where reference omits them."""
-    norm_ref = _normalize_words(reference_text)
+    norm_ref = _normalize_words(clean_reference_text(reference_text))
     norm_hyp = _normalize_words(hypothesis_text)
     norm_base = (
         _normalize_words(baseline_hypothesis_text)
@@ -361,7 +362,7 @@ def main(argv: list[str]) -> int:
         if not ref_path.is_file():
             print(f"Error: reference file not found: {ref_path}", file=sys.stderr)
             return 2
-        ref_text = ref_path.read_text(encoding="utf-8").strip()
+        ref_text = clean_reference_text(ref_path.read_text(encoding="utf-8"))
         if not ref_text:
             print(f"Error: reference file is empty: {ref_path}", file=sys.stderr)
             return 2

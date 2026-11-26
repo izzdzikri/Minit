@@ -530,8 +530,8 @@ class _RecordingTimerReadout extends ConsumerWidget {
         Center(
           child: Text(
             timerState.isActive
-                ? '16 kHz mono AAC (48 kbps)  •  ${timerState.segmentCount} segment(s)'
-                : '16 kHz mono AAC (48 kbps)  •  Saved continuously every 30s',
+                ? '16 kHz mono AAC (32 kbps)  •  ${timerState.segmentCount} segment(s)'
+                : '16 kHz mono AAC (32 kbps)  •  Saved continuously every 30s',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall,
           ),

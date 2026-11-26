@@ -15,6 +15,7 @@ import argparse
 import gc
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -289,10 +290,27 @@ def detect_language_timeline(
     return windows, changes
 
 
+_REF_TIMESTAMP_RE = re.compile(r"\[\d{1,4}:\d{2}(?::\d{2})?(?:\.\d+)?\]")
+
+
+def clean_reference_text(raw_text: str) -> str:
+    """Strip `# ...` comment lines and `[mm:ss]` timestamps from reference text."""
+    lines: list[str] = []
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        cleaned_line = re.sub(r"\s+", " ", _REF_TIMESTAMP_RE.sub("", stripped)).strip()
+        if cleaned_line:
+            lines.append(cleaned_line)
+    return " ".join(lines)
+
+
 def compute_wer_cer(reference_text: str, hypothesis_text: str) -> tuple[float, float]:
     """Compute WER and CER with jiwer after case & punctuation normalization."""
     import jiwer
 
+    cleaned_ref = clean_reference_text(reference_text)
     base_transforms = [
         jiwer.ToLowerCase(),
         jiwer.RemovePunctuation(),
@@ -304,7 +322,7 @@ def compute_wer_cer(reference_text: str, hypothesis_text: str) -> tuple[float, f
 
     wer_val = float(
         jiwer.wer(
-            reference_text,
+            cleaned_ref,
             hypothesis_text,
             reference_transform=word_norm,
             hypothesis_transform=word_norm,
@@ -312,7 +330,7 @@ def compute_wer_cer(reference_text: str, hypothesis_text: str) -> tuple[float, f
     )
     cer_val = float(
         jiwer.cer(
-            reference_text,
+            cleaned_ref,
             hypothesis_text,
             reference_transform=char_norm,
             hypothesis_transform=char_norm,
@@ -917,7 +935,7 @@ def main(argv: list[str]) -> int:
         if not ref_path.is_file():
             print(f"Error: reference file not found: {ref_path}", file=sys.stderr)
             return 2
-        reference_text = ref_path.read_text(encoding="utf-8").strip()
+        reference_text = clean_reference_text(ref_path.read_text(encoding="utf-8"))
         if not reference_text:
             print(f"Error: reference file is empty: {ref_path}", file=sys.stderr)
             return 2

@@ -157,3 +157,22 @@ def test_real_faster_whisper_provider_on_clip1_slice_when_available(
     assert any(tok in combined for tok in ("noise", "imbalance", "synthetic", "synthetik"))
     assert all(s.speaker_label == "Speaker 1" for s in result.segments)
     assert all(s.avg_logprob is not None for s in result.segments)
+
+
+def test_clean_reference_text_strips_comments_and_timestamps() -> None:
+    from scripts.benchmark import clean_reference_text, compute_wer_cer
+
+    draft_like_ref = (
+        "# DRAFT from small. Edit every line by listening.\n"
+        "# Another comment line\n"
+        "[00:00] Sebab synthetic tak ada noise.\n"
+        "[01:05] Masalah tu satu [01:12] missing values!\n"
+    )
+    cleaned = clean_reference_text(draft_like_ref)
+    assert cleaned == "Sebab synthetic tak ada noise. Masalah tu satu missing values!"
+    wer, cer = compute_wer_cer(
+        draft_like_ref,
+        "sebab synthetic tak ada noise masalah tu satu missing values",
+    )
+    assert wer == 0.0
+    assert cer == 0.0
