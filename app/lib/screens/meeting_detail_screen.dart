@@ -738,11 +738,12 @@ class _SummaryTabContent extends StatelessWidget {
     final summary = detail.summary;
 
     if (summary == null && detail.actionItems.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.summarize_outlined,
         title: 'No AI summary yet',
-        message:
-            'This audio is saved on your phone. AI transcription and structured summaries arrive in a later phase.',
+        message: detail.segments.isNotEmpty
+            ? 'Transcript is ready in the Transcript tab. Structured AI summaries and action items arrive in a later phase.'
+            : 'Structured AI summaries arrive in a later phase. Tap Transcribe above to convert speech to text.',
       );
     }
 
