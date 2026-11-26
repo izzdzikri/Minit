@@ -42,6 +42,7 @@ storage/
 *.aac
 *.wav
 *.mp3
+*.peaks
 pending/
 
 # OS / editor

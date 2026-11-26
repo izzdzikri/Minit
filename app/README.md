@@ -1,6 +1,6 @@
-# minute
+# minit
 
-A new Flutter project.
+Android meeting and lecture recorder app built with Flutter.
 
 ## Getting Started
 

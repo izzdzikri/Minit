@@ -1,6 +1,6 @@
-# Minute
+# Minit
 
-Minute is an Android-first meeting and lecture recorder designed to capture reliable long-form audio—including mixed English/Malay (Manglish) speech—and produce timestamped, speaker-labeled transcripts, AI summaries, decisions, and action items.
+Minit is an Android-first meeting and lecture recorder designed to capture reliable long-form audio—including mixed English/Malay (Manglish) speech—and produce timestamped, speaker-labeled transcripts, AI summaries, decisions, and action items.
 
 ## Tech Stack
 - **Mobile (Android):** Flutter, Dart, Material 3, `record`, `flutter_foreground_task`, `just_audio`, `audio_session`, `permission_handler`, `device_info_plus`
