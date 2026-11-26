@@ -85,13 +85,15 @@ class MeetingStatusPoller {
               localMeetingId: localMeetingId,
             );
             if (_disposed) break;
+            final latest = await _db.getMeetingById(localMeetingId);
+            final alreadyReady = latest?.status == 'Ready';
             await _db.replaceMeetingTranscript(
               meetingId: localMeetingId,
               segmentDrafts: full.segments,
               detectedLanguage: full.detectedLanguage,
             );
             _onUpdated?.call();
-            if (_notifyReady != null) {
+            if (!alreadyReady && _notifyReady != null) {
               await _notifyReady(
                 meetingId: localMeetingId,
                 title: meeting.title,
@@ -159,5 +161,74 @@ class MeetingStatusPoller {
   void dispose() {
     _disposed = true;
     _activeMeetingId = null;
+  }
+}
+
+/// Coordinates one background [MeetingStatusPoller] per queued/transcribing
+/// meeting so status updates and "Transcript ready" notifications still run
+/// while browsing Library or Record.
+class TranscriptionMonitor {
+  TranscriptionMonitor({
+    required this._db,
+    required this._api,
+    required this._tokenStorage,
+    required this._loadServerUrl,
+    this._notifyReady,
+    DelayFn? delayFn,
+    this._onUpdated,
+  }) : _delay = delayFn ?? Future<void>.delayed;
+
+  final AppDatabase _db;
+  final BackendApiClient _api;
+  final TokenStorage _tokenStorage;
+  final Future<String> Function() _loadServerUrl;
+  final ReadyNotificationFn? _notifyReady;
+  final DelayFn _delay;
+  final void Function(String meetingId)? _onUpdated;
+
+  final Map<String, MeetingStatusPoller> _pollers = {};
+  bool _disposed = false;
+
+  bool isTracking(String meetingId) => _pollers.containsKey(meetingId);
+
+  void trackMeeting(String localMeetingId) {
+    if (_disposed || _pollers.containsKey(localMeetingId)) return;
+    final poller = MeetingStatusPoller(
+      db: _db,
+      api: _api,
+      tokenStorage: _tokenStorage,
+      loadServerUrl: _loadServerUrl,
+      notifyReady: _notifyReady,
+      delayFn: _delay,
+      onUpdated: () => _onUpdated?.call(localMeetingId),
+    );
+    _pollers[localMeetingId] = poller;
+    unawaited(
+      poller.pollUntilTerminal(localMeetingId).whenComplete(() {
+        _pollers.remove(localMeetingId);
+      }),
+    );
+  }
+
+  Future<void> resumePending() async {
+    if (_disposed) return;
+    final items = await _db.listMeetings();
+    for (final item in items) {
+      if (_disposed) break;
+      final m = item.meeting;
+      if ((m.status == 'Queued' || m.status == 'Transcribing') &&
+          m.serverMeetingId != null &&
+          m.serverMeetingId!.isNotEmpty) {
+        trackMeeting(m.id);
+      }
+    }
+  }
+
+  void dispose() {
+    _disposed = true;
+    for (final poller in _pollers.values) {
+      poller.dispose();
+    }
+    _pollers.clear();
   }
 }

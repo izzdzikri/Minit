@@ -16,6 +16,7 @@ class MeetingCard extends StatelessWidget {
     required this.item,
     required this.peaks,
     required this.onTap,
+    this.onRetry,
   });
 
   static final DateFormat _cardDateFormat = DateFormat('d MMM, HH:mm');
@@ -23,6 +24,7 @@ class MeetingCard extends StatelessWidget {
   final MeetingListItem item;
   final Uint8List? peaks;
   final VoidCallback onTap;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -87,6 +89,20 @@ class MeetingCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall,
                   ),
+                ] else if (m.status.toLowerCase() != 'ready' &&
+                    m.statusMessage != null &&
+                    m.statusMessage!.trim().isNotEmpty) ...[
+                  const SizedBox(height: MinuteSpacing.sm),
+                  Text(
+                    m.statusMessage!.trim(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: m.status.toLowerCase() == 'failed'
+                          ? c.danger
+                          : c.textSecondary,
+                    ),
+                  ),
                 ],
                 const SizedBox(height: MinuteSpacing.sm),
                 Wrap(
@@ -94,7 +110,27 @@ class MeetingCard extends StatelessWidget {
                   runSpacing: MinuteSpacing.xs,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    StatusChip.fromMeetingStatus(m.status),
+                    StatusChip.fromMeetingStatus(
+                      m.status,
+                      progressPercent: m.status.toLowerCase() == 'uploading'
+                          ? m.uploadProgress
+                          : null,
+                    ),
+                    if (m.status.toLowerCase() == 'failed' && onRetry != null)
+                      ActionChip(
+                        avatar: Icon(Icons.refresh, size: 15, color: c.danger),
+                        label: Text(
+                          'Retry',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: c.danger,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        backgroundColor: c.dangerSubtle,
+                        side: BorderSide(color: c.danger.withValues(alpha: 0.4)),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onRetry,
+                      ),
                     if (m.isForceMode)
                       const StatusChip(
                         label: 'FORCE',

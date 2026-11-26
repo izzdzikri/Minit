@@ -31,6 +31,7 @@ class UploadManager {
     ConnectivityStreamFactory? connectivityStream,
     DelayFn? delayFn,
     this._onStateChanged,
+    this._onUploadComplete,
     this._chunkSizeBytes = defaultChunkSizeBytes,
   })  : _checkConnectivity =
             checkConnectivity ?? (() => Connectivity().checkConnectivity()),
@@ -49,6 +50,7 @@ class UploadManager {
   final ConnectivityStreamFactory _connectivityStream;
   final DelayFn _delay;
   final void Function(String meetingId)? _onStateChanged;
+  final void Function(String meetingId)? _onUploadComplete;
   final int _chunkSizeBytes;
 
   StreamSubscription<List<ConnectivityResult>>? _connSub;
@@ -56,14 +58,21 @@ class UploadManager {
   bool _rerunRequested = false;
   bool _disposed = false;
 
-  void startListening() {
+  Future<void> startListening() async {
     if (_disposed || _connSub != null) return;
     try {
-      _connSub = _connectivityStream().listen((results) {
-        if (!_disposed && !results.contains(ConnectivityResult.none)) {
-          unawaited(processPendingUploads());
-        }
-      });
+      // Probe channel first so headless tests without connectivity_plus registered
+      // do not trigger unhandled EventChannel errors on receiveBroadcastStream().
+      await _checkConnectivity();
+      if (_disposed || _connSub != null) return;
+      _connSub = _connectivityStream().listen(
+        (results) {
+          if (!_disposed && !results.contains(ConnectivityResult.none)) {
+            unawaited(processPendingUploads());
+          }
+        },
+        onError: (_) {},
+      );
     } catch (_) {
       // Safe fallback in headless tests without platform connectivity streams.
     }
@@ -500,6 +509,7 @@ class UploadManager {
       );
     }
     _onStateChanged?.call(meetingId);
+    _onUploadComplete?.call(meetingId);
   }
 
   Future<void> _markFailed(

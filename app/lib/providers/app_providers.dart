@@ -9,12 +9,16 @@ import '../data/database/app_database.dart';
 import '../data/repositories/meeting_repository.dart';
 import '../models/recording_item.dart';
 import '../services/app_settings.dart';
+import '../services/backend_api_client.dart';
 import '../services/native_bridge.dart';
 import '../services/peaks_storage.dart';
 import '../services/permissions_service.dart';
 import '../services/playback_controller.dart';
 import '../services/recording_storage.dart';
 import '../services/recording_task_handler.dart';
+import '../services/secure_token_storage.dart';
+import '../services/transcription_poller.dart';
+import '../services/upload_manager.dart';
 import '../widgets/waveform_view.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
@@ -81,6 +85,122 @@ final settingsPersistProvider = Provider<SettingsPersistCallback>((ref) {
   return AppSettingsStorage.save;
 });
 
+final tokenStorageProvider = Provider<TokenStorage>((ref) {
+  return const SecureTokenStorage();
+});
+
+final backendApiClientProvider = Provider<BackendApiClient>((ref) {
+  return BackendApiClient();
+});
+
+final readyNotificationCallbackProvider = Provider<ReadyNotificationFn>((ref) {
+  return NativeBridge.showTranscriptReadyNotification;
+});
+
+final transcriptionMonitorProvider = Provider<TranscriptionMonitor>((ref) {
+  final monitor = TranscriptionMonitor(
+    db: ref.watch(appDatabaseProvider),
+    api: ref.watch(backendApiClientProvider),
+    tokenStorage: ref.watch(tokenStorageProvider),
+    loadServerUrl: () async =>
+        (ref.read(settingsControllerProvider).value ??
+                await AppSettingsStorage.load())
+            .serverUrl,
+    notifyReady: ref.read(readyNotificationCallbackProvider),
+    onUpdated: (meetingId) {
+      ref.invalidate(meetingDetailProvider(meetingId));
+      unawaited(ref.read(meetingsProvider.notifier).refresh());
+    },
+  );
+  ref.onDispose(monitor.dispose);
+  return monitor;
+});
+
+final uploadManagerProvider = Provider<UploadManager>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  final api = ref.watch(backendApiClientProvider);
+  final tokens = ref.watch(tokenStorageProvider);
+  final manager = UploadManager(
+    db: db,
+    api: api,
+    tokenStorage: tokens,
+    loadSettings: () async =>
+        ref.read(settingsControllerProvider).value ??
+        await AppSettingsStorage.load(),
+    onStateChanged: (meetingId) {
+      ref.invalidate(meetingDetailProvider(meetingId));
+      unawaited(ref.read(meetingsProvider.notifier).refresh());
+    },
+    onUploadComplete: (meetingId) {
+      ref.read(transcriptionMonitorProvider).trackMeeting(meetingId);
+    },
+  );
+  unawaited(manager.startListening());
+  ref.onDispose(manager.dispose);
+  return manager;
+});
+
+/// Starts or retries upload/transcription for [meetingId], calling [onQueued]
+/// when an uploaded meeting is queued on the backend (`TranscriptionMonitor` by default).
+Future<void> dispatchMeetingTranscription(
+  WidgetRef ref,
+  String meetingId, {
+  void Function(String meetingId)? onQueued,
+}) async {
+  final db = ref.read(appDatabaseProvider);
+  final detail = await db.getMeetingDetail(meetingId);
+  if (detail == null) return;
+
+  final settings =
+      ref.read(settingsControllerProvider).value ?? await AppSettingsStorage.load();
+  final m = detail.meeting;
+
+  if (m.serverMeetingId != null &&
+      detail.uploadEntry?.status == 'completed' &&
+      (m.status == 'Failed' || m.status == 'Uploaded')) {
+    final silenceHints = detail.markers
+        .where((mk) => mk.type == MarkerType.silence && mk.endMs != null)
+        .map((mk) => (startSec: mk.startMs / 1000.0, endSec: mk.endMs! / 1000.0))
+        .toList();
+    final token = await ref.read(tokenStorageProvider).readToken();
+    try {
+      final st = await ref.read(backendApiClientProvider).triggerProcess(
+            serverUrl: settings.serverUrl,
+            token: token,
+            serverMeetingId: m.serverMeetingId!,
+            languageHint: m.language,
+            glossary: m.glossary?.isNotEmpty == true
+                ? m.glossary
+                : settings.defaultGlossary,
+            silenceRanges: silenceHints.isEmpty ? null : silenceHints,
+          );
+      await db.updateMeetingServerState(
+        m.id,
+        status: st.status.toLowerCase() == 'transcribing'
+            ? 'Transcribing'
+            : 'Queued',
+        statusMessage: st.message,
+      );
+      ref.invalidate(meetingDetailProvider(m.id));
+      unawaited(ref.read(meetingsProvider.notifier).refresh());
+      (onQueued ?? ref.read(transcriptionMonitorProvider).trackMeeting)(m.id);
+      return;
+    } on BackendException catch (e) {
+      await db.updateMeetingServerState(
+        m.id,
+        status: 'Failed',
+        statusMessage: e.userMessage,
+      );
+      ref.invalidate(meetingDetailProvider(m.id));
+      unawaited(ref.read(meetingsProvider.notifier).refresh());
+      return;
+    }
+  }
+
+  unawaited(ref.read(uploadManagerProvider).enqueueAndProcess(m.id));
+  ref.invalidate(meetingDetailProvider(m.id));
+}
+
 final forceModeServiceSyncProvider =
     Provider<ForceModeServiceSyncCallback>((ref) {
   return (bool enabled) async {
@@ -140,7 +260,12 @@ class SettingsController extends AsyncNotifier<AppSettings> {
     return a.themePreference == b.themePreference &&
         a.defaultLanguage == b.defaultLanguage &&
         a.otherAppAudioBehavior == b.otherAppAudioBehavior &&
-        a.forceRecordMode == b.forceRecordMode;
+        a.forceRecordMode == b.forceRecordMode &&
+        a.serverUrl == b.serverUrl &&
+        a.wifiOnlyUpload == b.wifiOnlyUpload &&
+        a.autoUpload == b.autoUpload &&
+        a.defaultGlossary == b.defaultGlossary &&
+        a.consentedServerUrl == b.consentedServerUrl;
   }
 
   Future<String?> setThemePreference(ThemeMode mode) => _applyOptimisticUpdate(
@@ -150,7 +275,9 @@ class SettingsController extends AsyncNotifier<AppSettings> {
 
   Future<String?> setDefaultLanguage(String language) =>
       _applyOptimisticUpdate(
-        (current) => current.copyWith(defaultLanguage: language),
+        (current) => current.copyWith(
+          defaultLanguage: normalizeLanguageCode(language),
+        ),
         errorMessage: 'Could not save default language.',
       );
 
@@ -158,6 +285,39 @@ class SettingsController extends AsyncNotifier<AppSettings> {
       _applyOptimisticUpdate(
         (current) => current.copyWith(otherAppAudioBehavior: behavior),
         errorMessage: 'Could not save audio interruption preference.',
+      );
+
+  Future<String?> setServerUrl(String url) => _applyOptimisticUpdate(
+        (current) => current.copyWith(
+          serverUrl: AppSettings.normalizeServerUrl(url),
+        ),
+        errorMessage: 'Could not save server URL.',
+      );
+
+  Future<String?> setWifiOnlyUpload(bool enabled) => _applyOptimisticUpdate(
+        (current) => current.copyWith(wifiOnlyUpload: enabled),
+        errorMessage: 'Could not save Wi-Fi preference.',
+        afterPersist: (_) =>
+            ref.read(uploadManagerProvider).processPendingUploads(),
+      );
+
+  Future<String?> setAutoUpload(bool enabled) => _applyOptimisticUpdate(
+        (current) => current.copyWith(autoUpload: enabled),
+        errorMessage: 'Could not save auto-upload preference.',
+      );
+
+  Future<String?> setDefaultGlossary(String glossary) =>
+      _applyOptimisticUpdate(
+        (current) => current.copyWith(defaultGlossary: glossary.trim()),
+        errorMessage: 'Could not save default glossary.',
+      );
+
+  Future<String?> acceptUploadConsent(String serverUrl) =>
+      _applyOptimisticUpdate(
+        (current) => current.copyWith(
+          consentedServerUrl: AppSettings.normalizeServerUrl(serverUrl),
+        ),
+        errorMessage: 'Could not save upload consent.',
       );
 
   Future<String?> setForceRecordMode(bool enabled) {
@@ -227,6 +387,8 @@ class MeetingsNotifier extends AsyncNotifier<List<MeetingListItem>> {
       _lastRecoveryMessage =
           'Recovered ${recovered.length} interrupted recording(s) with waveform peaks.';
     }
+    unawaited(ref.read(uploadManagerProvider).processPendingUploads());
+    unawaited(ref.read(transcriptionMonitorProvider).resumePending());
     return repo.listMeetings(query: query);
   }
 
@@ -302,8 +464,9 @@ class RecordingUiState {
     this.freeBytes = 0,
     this.isPowerSaveMode = false,
     this.isForceMode = false,
-    this.language = 'auto',
+    this.language = 'ms',
     this.title = '',
+    this.glossary = '',
     this.markers = const [],
     this.statusMessage,
     this.messageLevel = 'info',
@@ -321,6 +484,7 @@ class RecordingUiState {
   final bool isForceMode;
   final String language;
   final String title;
+  final String glossary;
   final List<TimelineMarker> markers;
   final String? statusMessage;
   final String messageLevel;
@@ -343,6 +507,7 @@ class RecordingUiState {
     bool? isForceMode,
     String? language,
     String? title,
+    String? glossary,
     List<TimelineMarker>? markers,
     String? statusMessage,
     bool clearMessage = false,
@@ -362,6 +527,7 @@ class RecordingUiState {
       isForceMode: isForceMode ?? this.isForceMode,
       language: language ?? this.language,
       title: title ?? this.title,
+      glossary: glossary ?? this.glossary,
       markers: markers ?? this.markers,
       statusMessage:
           clearMessage ? null : (statusMessage ?? this.statusMessage),
@@ -444,6 +610,10 @@ class RecordingController extends Notifier<RecordingUiState> {
     if (state.isActive) {
       FlutterForegroundTask.sendDataToTask({'cmd': 'update_meta', 'title': title});
     }
+  }
+
+  void setDraftGlossary(String glossary) {
+    state = state.copyWith(glossary: glossary);
   }
 
   void setDraftLanguage(String language) {
@@ -719,7 +889,25 @@ class RecordingController extends Notifier<RecordingUiState> {
     required String level,
   }) async {
     if (item != null) {
-      await ref.read(meetingRepositoryProvider).saveRecordedMeeting(item);
+      final settings =
+          ref.read(settingsControllerProvider).value ??
+          await AppSettingsStorage.load();
+      final effectiveGlossary = state.glossary.trim().isNotEmpty
+          ? state.glossary.trim()
+          : settings.defaultGlossary;
+      await ref.read(meetingRepositoryProvider).saveRecordedMeeting(
+            item,
+            glossary: effectiveGlossary,
+          );
+      if (settings.autoUpload && settings.hasConsentedFor(settings.serverUrl)) {
+        unawaited(ref.read(uploadManagerProvider).enqueueAndProcess(item.id));
+      } else if (settings.autoUpload) {
+        await ref.read(appDatabaseProvider).updateMeetingServerState(
+              item.id,
+              statusMessage:
+                  'Review server upload notice to transcribe (${settings.serverUrl}).',
+            );
+      }
       await ref.read(meetingsProvider.notifier).refresh();
     }
     _waveform.reset();
@@ -727,6 +915,7 @@ class RecordingController extends Notifier<RecordingUiState> {
       status: RecorderStatus.idle,
       elapsed: Duration.zero,
       segmentCount: 0,
+      glossary: '',
       markers: const [],
       statusMessage: msg,
       messageLevel: level,

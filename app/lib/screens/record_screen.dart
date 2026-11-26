@@ -20,10 +20,9 @@ import '../widgets/text_prompt_dialog.dart';
 import '../widgets/waveform_view.dart';
 
 const _languageOptions = <(String code, String label)>[
-  ('auto', 'Auto'),
-  ('mixed', 'Mixed (Manglish)'),
+  ('ms', 'Malay (default)'),
   ('en', 'English'),
-  ('ms', 'Bahasa Melayu'),
+  ('auto', 'Auto'),
 ];
 
 /// Full recording studio screen with live 10 Hz waveform, timer, marker tool,
@@ -37,6 +36,7 @@ class RecordScreen extends ConsumerStatefulWidget {
 
 class _RecordScreenState extends ConsumerState<RecordScreen> {
   late final TextEditingController _titleController;
+  late final TextEditingController _glossaryController;
   String? _selectedLanguage;
   bool _syncedInitialSettings = false;
 
@@ -45,8 +45,9 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
     super.initState();
     final currentRec = ref.read(recordingControllerProvider);
     _titleController = TextEditingController(text: currentRec.title);
+    _glossaryController = TextEditingController(text: currentRec.glossary);
     if (currentRec.isActive) {
-      _selectedLanguage = currentRec.language;
+      _selectedLanguage = normalizeLanguageCode(currentRec.language);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(
@@ -61,6 +62,7 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _glossaryController.dispose();
     super.dispose();
   }
 
@@ -214,7 +216,9 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
       final rec = ref.read(recordingControllerProvider);
       _selectedLanguage ??= rec.isActive ? rec.language : initialDefaultLang;
     }
-    final activeLang = _selectedLanguage ?? initialDefaultLang ?? 'auto';
+    final activeLang = normalizeLanguageCode(
+      _selectedLanguage ?? initialDefaultLang ?? 'ms',
+    );
 
     return _RecordPopScope(
       onConfirmLeave: _confirmBackWhileRecording,
@@ -268,14 +272,16 @@ class _RecordScreenState extends ConsumerState<RecordScreen> {
                           const SectionHeader(title: 'Details'),
                           _DetailsCard(
                             titleController: _titleController,
+                            glossaryController: _glossaryController,
                             activeLang: activeLang,
                             onLanguageSelected: (code) {
+                              final norm = normalizeLanguageCode(code);
                               setState(() {
-                                _selectedLanguage = code;
+                                _selectedLanguage = norm;
                               });
                               ref
                                   .read(recordingControllerProvider.notifier)
-                                  .setDraftLanguage(code);
+                                  .setDraftLanguage(norm);
                             },
                             theme: theme,
                             colors: c,
@@ -524,8 +530,8 @@ class _RecordingTimerReadout extends ConsumerWidget {
         Center(
           child: Text(
             timerState.isActive
-                ? '16 kHz mono AAC  •  ${timerState.segmentCount} segment(s)'
-                : '16 kHz mono AAC  •  Saved continuously every 30s',
+                ? '16 kHz mono AAC (48 kbps)  •  ${timerState.segmentCount} segment(s)'
+                : '16 kHz mono AAC (48 kbps)  •  Saved continuously every 30s',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall,
           ),
@@ -688,6 +694,7 @@ class _ForceRecordToggleCard extends ConsumerWidget {
 class _DetailsCard extends ConsumerWidget {
   const _DetailsCard({
     required this.titleController,
+    required this.glossaryController,
     required this.activeLang,
     required this.onLanguageSelected,
     required this.theme,
@@ -695,6 +702,7 @@ class _DetailsCard extends ConsumerWidget {
   });
 
   final TextEditingController titleController;
+  final TextEditingController glossaryController;
   final String activeLang;
   final ValueChanged<String> onLanguageSelected;
   final ThemeData theme;
@@ -747,6 +755,49 @@ class _DetailsCard extends ConsumerWidget {
                         : (_) => onLanguageSelected(option.$1),
                   ),
               ],
+            ),
+            if (activeLang == 'auto') ...[
+              const SizedBox(height: MinuteSpacing.sm),
+              Container(
+                padding: const EdgeInsets.all(MinuteSpacing.sm),
+                decoration: BoxDecoration(
+                  color: colors.warningSubtle,
+                  borderRadius: BorderRadius.circular(MinuteRadii.sm),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.warning_amber_rounded,
+                      size: 18,
+                      color: colors.warning,
+                    ),
+                    const SizedBox(width: MinuteSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        'Auto detects from the first 30 seconds only.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.warning,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: MinuteSpacing.md),
+            TextField(
+              controller: glossaryController,
+              enabled: !isFinalizing,
+              maxLines: null,
+              minLines: 1,
+              onChanged: (value) => ref
+                  .read(recordingControllerProvider.notifier)
+                  .setDraftGlossary(value),
+              decoration: const InputDecoration(
+                labelText: 'Glossary hints (optional)',
+                hintText: 'Override Settings default (e.g. ChatGPT, benchmark, names)',
+              ),
             ),
           ],
         ),

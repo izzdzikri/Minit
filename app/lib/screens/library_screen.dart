@@ -11,6 +11,7 @@ import '../theme/minute_tokens.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_state.dart';
 import '../widgets/meeting_card.dart';
+import '../widgets/upload_consent_dialog.dart';
 import '../widgets/offline_banner.dart';
 import '../widgets/skeleton_loader.dart';
 
@@ -325,10 +326,18 @@ class _LibraryMeetingRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final peaksAsync = ref.watch(meetingPeaksProvider(item.meeting.peaksPath));
+    final isFailed = item.meeting.status.toLowerCase() == 'failed';
     return MeetingCard(
       item: item,
       peaks: peaksAsync.value,
       onTap: onTap,
+      onRetry: isFailed
+          ? () async {
+              final ok = await ensureUploadConsent(context, ref);
+              if (!ok) return;
+              await dispatchMeetingTranscription(ref, item.meeting.id);
+            }
+          : null,
     );
   }
 }

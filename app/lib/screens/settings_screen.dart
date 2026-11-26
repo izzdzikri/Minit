@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../providers/app_providers.dart';
 import '../services/app_settings.dart';
+import '../services/backend_api_client.dart';
 import '../services/permissions_service.dart';
 import '../services/recording_storage.dart';
 import '../theme/minute_tokens.dart';
@@ -21,14 +22,13 @@ final storageUsageBytesProvider = FutureProvider.autoDispose<int>((ref) {
 });
 
 const _languageNames = <(String code, String label)>[
-  ('auto', 'Auto-detect'),
-  ('mixed', 'Mixed (English / Malay)'),
+  ('ms', 'Malay (default)'),
   ('en', 'English'),
-  ('ms', 'Bahasa Melayu'),
+  ('auto', 'Auto'),
 ];
 
-/// App settings screen: theme, default language, interruption rules,
-/// OEM battery reliability help, storage usage, and destructive clear-all.
+/// App settings screen: transcription server & secure API token, upload toggles,
+/// global glossary hints, theme, default language, interruption rules, and storage.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -37,7 +37,91 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  final TextEditingController _serverUrlController = TextEditingController();
+  final TextEditingController _tokenController = TextEditingController();
+  final TextEditingController _glossaryController = TextEditingController();
+
+  bool _controllersSeeded = false;
+  bool _obscureToken = true;
+  bool _testingConnection = false;
+  String? _connectionStatusMsg;
+  bool _connectionStatusOk = false;
   bool _deletingAll = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadToken());
+  }
+
+  @override
+  void dispose() {
+    _serverUrlController.dispose();
+    _tokenController.dispose();
+    _glossaryController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadToken() async {
+    try {
+      final token = await ref.read(tokenStorageProvider).readToken();
+      if (!mounted) return;
+      if (token != null && token.isNotEmpty) {
+        _tokenController.text = token;
+      }
+    } catch (_) {}
+  }
+
+  void _seedFromSettings(AppSettings settings) {
+    if (_controllersSeeded) return;
+    _controllersSeeded = true;
+    _serverUrlController.text = settings.serverUrl;
+    _glossaryController.text = settings.defaultGlossary;
+  }
+
+  Future<void> _saveServerFields() async {
+    final notifier = ref.read(settingsControllerProvider.notifier);
+    await notifier.setServerUrl(_serverUrlController.text);
+    await ref.read(tokenStorageProvider).writeToken(_tokenController.text);
+  }
+
+  Future<void> _testConnection() async {
+    setState(() {
+      _testingConnection = true;
+      _connectionStatusMsg = null;
+    });
+    try {
+      await _saveServerFields();
+      final url = AppSettings.normalizeServerUrl(_serverUrlController.text);
+      final token = _tokenController.text.trim();
+      final health = await ref.read(backendApiClientProvider).testHealth(
+            serverUrl: url,
+            token: token,
+          );
+      if (!mounted) return;
+      setState(() {
+        _connectionStatusOk = true;
+        _connectionStatusMsg =
+            'Connected (${health.model} ${health.computeType}, default ${health.defaultLanguage}).';
+      });
+    } on BackendException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _connectionStatusOk = false;
+        _connectionStatusMsg = e.userMessage;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _connectionStatusOk = false;
+        _connectionStatusMsg = 'Could not reach the configured server.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _testingConnection = false);
+      }
+    }
+  }
 
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
@@ -139,6 +223,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           data: (settings) {
+            _seedFromSettings(settings);
+            final activeLang = normalizeLanguageCode(settings.defaultLanguage);
             return ListView(
               padding: const EdgeInsets.fromLTRB(
                 MinuteSpacing.md,
@@ -148,6 +234,139 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               children: [
                 if (!isOnline) const OfflineBanner(),
+
+                const SectionHeader(title: 'Transcription server'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(MinuteSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _serverUrlController,
+                          keyboardType: TextInputType.url,
+                          autocorrect: false,
+                          onChanged: (value) => ref
+                              .read(settingsControllerProvider.notifier)
+                              .setServerUrl(value),
+                          decoration: const InputDecoration(
+                            labelText: 'Server URL',
+                            hintText: 'http://localhost:8000',
+                            helperText:
+                                'Use http://localhost:8000 with adb reverse in debug, or https:// in release.',
+                          ),
+                        ),
+                        const SizedBox(height: MinuteSpacing.md),
+                        TextField(
+                          controller: _tokenController,
+                          obscureText: _obscureToken,
+                          autocorrect: false,
+                          enableSuggestions: false,
+                          onChanged: (value) => unawaited(
+                            ref.read(tokenStorageProvider).writeToken(value),
+                          ),
+                          decoration: InputDecoration(
+                            labelText: 'API token (stored securely)',
+                            hintText: 'Bearer token from backend .env',
+                            suffixIcon: IconButton(
+                              tooltip:
+                                  _obscureToken ? 'Show token' : 'Hide token',
+                              onPressed: () => setState(
+                                () => _obscureToken = !_obscureToken,
+                              ),
+                              icon: Icon(
+                                _obscureToken
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: MinuteSpacing.md),
+                        PrimaryButton(
+                          label: 'Test connection',
+                          icon: Icons.cloud_done_outlined,
+                          isLoading: _testingConnection,
+                          onPressed: _testConnection,
+                        ),
+                        if (_connectionStatusMsg != null) ...[
+                          const SizedBox(height: MinuteSpacing.sm),
+                          Container(
+                            padding: const EdgeInsets.all(MinuteSpacing.sm),
+                            decoration: BoxDecoration(
+                              color: _connectionStatusOk
+                                  ? c.successSubtle
+                                  : c.dangerSubtle,
+                              borderRadius:
+                                  BorderRadius.circular(MinuteRadii.sm),
+                            ),
+                            child: Text(
+                              _connectionStatusMsg!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color:
+                                    _connectionStatusOk ? c.success : c.danger,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: MinuteSpacing.lg),
+
+                const SectionHeader(title: 'Uploads & vocabulary'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(MinuteSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Upload automatically'),
+                          subtitle: const Text(
+                            'Queue finished recordings for transcription.',
+                          ),
+                          value: settings.autoUpload,
+                          onChanged: (value) => ref
+                              .read(settingsControllerProvider.notifier)
+                              .setAutoUpload(value),
+                        ),
+                        const Divider(height: MinuteSpacing.md),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Wi-Fi only'),
+                          subtitle: const Text(
+                            'Pause uploads on mobile data and resume on Wi-Fi.',
+                          ),
+                          value: settings.wifiOnlyUpload,
+                          onChanged: (value) => ref
+                              .read(settingsControllerProvider.notifier)
+                              .setWifiOnlyUpload(value),
+                        ),
+                        const Divider(height: MinuteSpacing.md),
+                        TextField(
+                          controller: _glossaryController,
+                          maxLines: null,
+                          minLines: 2,
+                          onChanged: (value) => ref
+                              .read(settingsControllerProvider.notifier)
+                              .setDefaultGlossary(value),
+                          decoration: const InputDecoration(
+                            labelText: 'Default glossary (optional)',
+                            hintText:
+                                'ChatGPT, benchmark, decision tree, synthetic data',
+                            helperText:
+                                'Comma-separated tech terms & names passed as Whisper vocabulary hints.',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: MinuteSpacing.lg),
 
                 const SectionHeader(title: 'Appearance'),
                 Card(
@@ -213,13 +432,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             for (final lang in _languageNames)
                               ChoiceChip(
                                 label: Text(lang.$2),
-                                selected: settings.defaultLanguage == lang.$1,
+                                selected: activeLang == lang.$1,
                                 onSelected: (_) => ref
                                     .read(settingsControllerProvider.notifier)
                                     .setDefaultLanguage(lang.$1),
                               ),
                           ],
                         ),
+                        if (activeLang == 'auto') ...[
+                          const SizedBox(height: MinuteSpacing.sm),
+                          Container(
+                            padding: const EdgeInsets.all(MinuteSpacing.sm),
+                            decoration: BoxDecoration(
+                              color: c.warningSubtle,
+                              borderRadius:
+                                  BorderRadius.circular(MinuteRadii.sm),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.warning_amber_rounded,
+                                  size: 18,
+                                  color: c.warning,
+                                ),
+                                const SizedBox(width: MinuteSpacing.sm),
+                                Expanded(
+                                  child: Text(
+                                    'Auto detects from the first 30 seconds only.',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: c.warning,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const Divider(height: MinuteSpacing.lg),
                         Text(
                           'When another app plays audio',

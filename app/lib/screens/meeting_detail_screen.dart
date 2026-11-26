@@ -13,8 +13,10 @@ import 'package:share_plus/share_plus.dart';
 import '../data/database/app_database.dart';
 import '../models/recording_item.dart';
 import '../providers/app_providers.dart';
+import '../services/app_settings.dart';
 import '../services/markdown_exporter.dart';
 import '../services/playback_controller.dart';
+import '../services/transcription_poller.dart';
 import '../theme/minute_tokens.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/error_state.dart';
@@ -26,6 +28,7 @@ import '../widgets/skeleton_loader.dart';
 import '../widgets/status_chip.dart';
 import '../widgets/tag_chip.dart';
 import '../widgets/text_prompt_dialog.dart';
+import '../widgets/upload_consent_dialog.dart';
 import '../widgets/waveform_view.dart';
 
 enum _DetailTab { summary, transcript }
@@ -53,12 +56,30 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
   bool _miniPlayerExpanded = false;
   String? _loadedAudioForId;
   int? _appliedInitialSeekSec;
+  bool _promptedAutoConsent = false;
+  bool _submittingAction = false;
   late final PlaybackController _playback;
+  late final MeetingStatusPoller _poller;
 
   @override
   void initState() {
     super.initState();
     _playback = ref.read(playbackControllerProvider);
+    _poller = MeetingStatusPoller(
+      db: ref.read(appDatabaseProvider),
+      api: ref.read(backendApiClientProvider),
+      tokenStorage: ref.read(tokenStorageProvider),
+      loadServerUrl: () async =>
+          (ref.read(settingsControllerProvider).value ??
+                  await AppSettingsStorage.load())
+              .serverUrl,
+      notifyReady: ref.read(readyNotificationCallbackProvider),
+      onUpdated: () {
+        if (!mounted) return;
+        ref.invalidate(meetingDetailProvider(widget.meetingId));
+        unawaited(ref.read(meetingsProvider.notifier).refresh());
+      },
+    );
     if (widget.initialSeekSeconds != null) {
       _selectedTab = _DetailTab.transcript;
     }
@@ -66,6 +87,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
 
   @override
   void dispose() {
+    _poller.dispose();
     unawaited(_playback.stop());
     super.dispose();
   }
@@ -166,6 +188,83 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
     ref.invalidate(meetingDetailProvider(widget.meetingId));
   }
 
+  Future<void> _editGlossary(MeetingDetailData detail) async {
+    final settings =
+        ref.read(settingsControllerProvider).value ?? const AppSettings();
+    final updated = await showTextPromptDialog(
+      context: context,
+      title: 'Meeting glossary hints',
+      initialValue: detail.meeting.glossary ?? settings.defaultGlossary,
+      labelText: 'Comma-separated tech terms & names',
+      hintText: 'e.g. ChatGPT, benchmark, decision tree',
+      confirmLabel: 'Save glossary',
+      maxLines: 3,
+      minLines: 2,
+      allowEmpty: true,
+      emptyFallback: '',
+    );
+    if (updated == null || !mounted) return;
+
+    await ref
+        .read(meetingRepositoryProvider)
+        .updateGlossary(detail.meeting.id, updated);
+    ref.invalidate(meetingDetailProvider(widget.meetingId));
+  }
+
+  Future<void> _changeLanguage(MeetingDetailData detail, String code) async {
+    await ref
+        .read(meetingRepositoryProvider)
+        .updateLanguage(detail.meeting.id, normalizeLanguageCode(code));
+    ref.invalidate(meetingDetailProvider(widget.meetingId));
+    await ref.read(meetingsProvider.notifier).refresh();
+  }
+
+  Future<void> _startOrRetryTranscription(MeetingDetailData detail) async {
+    if (_submittingAction) return;
+    setState(() => _submittingAction = true);
+    try {
+      final ok = await ensureUploadConsent(context, ref);
+      if (!ok || !mounted) return;
+      await dispatchMeetingTranscription(
+        ref,
+        detail.meeting.id,
+        onQueued: (id) {
+          if (mounted) {
+            unawaited(_poller.pollUntilTerminal(id));
+          }
+        },
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submittingAction = false);
+      }
+    }
+  }
+
+  void _maybeSyncLifecycle(MeetingDetailData detail) {
+    final m = detail.meeting;
+    if ((m.status == 'Queued' || m.status == 'Transcribing') &&
+        m.serverMeetingId != null &&
+        m.serverMeetingId!.isNotEmpty &&
+        !_poller.isRunning) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_poller.pollUntilTerminal(m.id));
+      });
+    }
+
+    final needsAutoConsentPrompt = !_promptedAutoConsent &&
+        m.status == 'Recorded' &&
+        (m.statusMessage?.startsWith('Review server upload notice') ?? false);
+    if (needsAutoConsentPrompt) {
+      _promptedAutoConsent = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_startOrRetryTranscription(detail));
+      });
+    }
+  }
+
   Future<void> _openExportSheet(MeetingDetailData detail) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -240,6 +339,7 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
         }
 
         _syncPlaybackForMeeting(detail);
+        _maybeSyncLifecycle(detail);
         final peaksAsync =
             ref.watch(meetingPeaksProvider(detail.meeting.peaksPath));
         final m = detail.meeting;
@@ -329,7 +429,12 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                           runSpacing: MinuteSpacing.xs,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            StatusChip.fromMeetingStatus(m.status),
+                            StatusChip.fromMeetingStatus(
+                              m.status,
+                              progressPercent: m.status == 'Uploading'
+                                  ? m.uploadProgress
+                                  : null,
+                            ),
                             if (m.isForceMode)
                               const StatusChip(
                                 label: 'FORCE',
@@ -356,11 +461,111 @@ class _MeetingDetailScreenState extends ConsumerState<MeetingDetailScreen> {
                             ),
                           ],
                         ),
+                        if (m.statusMessage != null &&
+                            m.statusMessage!.trim().isNotEmpty &&
+                            m.status != 'Ready') ...[
+                          const SizedBox(height: MinuteSpacing.sm),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(MinuteSpacing.sm),
+                            decoration: BoxDecoration(
+                              color: m.status == 'Failed'
+                                  ? c.dangerSubtle
+                                  : c.surfaceSubtle,
+                              borderRadius:
+                                  BorderRadius.circular(MinuteRadii.sm),
+                              border: Border.all(
+                                color: m.status == 'Failed'
+                                    ? c.danger.withValues(alpha: 0.4)
+                                    : c.border,
+                              ),
+                            ),
+                            child: Text(
+                              m.statusMessage!,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: m.status == 'Failed'
+                                    ? c.danger
+                                    : c.textSecondary,
+                                fontWeight: m.status == 'Failed'
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: MinuteSpacing.sm),
+                        Wrap(
+                          spacing: MinuteSpacing.xs,
+                          runSpacing: MinuteSpacing.xs,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            for (final opt in const [
+                              ('ms', 'Malay'),
+                              ('en', 'English'),
+                              ('auto', 'Auto'),
+                            ])
+                              ChoiceChip(
+                                label: Text(opt.$2),
+                                selected:
+                                    normalizeLanguageCode(m.language) == opt.$1,
+                                onSelected: (m.status == 'Uploading' ||
+                                        m.status == 'Queued' ||
+                                        m.status == 'Transcribing')
+                                    ? null
+                                    : (_) => _changeLanguage(detail, opt.$1),
+                              ),
+                          ],
+                        ),
+                        if (normalizeLanguageCode(m.language) == 'auto') ...[
+                          const SizedBox(height: MinuteSpacing.xs),
+                          Text(
+                            'Auto detects from the first 30 seconds only.',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: c.warning,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: MinuteSpacing.md),
                         Wrap(
                           spacing: MinuteSpacing.sm,
                           runSpacing: MinuteSpacing.sm,
                           children: [
+                            if ((m.status == 'Recorded' || m.status == 'Failed') &&
+                                m.audioPath != null &&
+                                m.audioPath!.isNotEmpty)
+                              FilledButton.icon(
+                                onPressed: _submittingAction
+                                    ? null
+                                    : () => _startOrRetryTranscription(detail),
+                                icon: Icon(
+                                  m.status == 'Failed'
+                                      ? Icons.refresh
+                                      : Icons.transcribe_outlined,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  m.status == 'Failed' ? 'Retry' : 'Transcribe',
+                                ),
+                              ),
+                            if (m.status == 'Uploading' &&
+                                detail.uploadEntry?.status == 'paused')
+                              OutlinedButton.icon(
+                                onPressed: _submittingAction
+                                    ? null
+                                    : () => _startOrRetryTranscription(detail),
+                                icon: const Icon(Icons.upload_outlined, size: 18),
+                                label: const Text('Resume upload'),
+                              ),
+                            OutlinedButton.icon(
+                              onPressed: () => _editGlossary(detail),
+                              icon: const Icon(Icons.book_outlined, size: 18),
+                              label: Text(
+                                (m.glossary != null && m.glossary!.isNotEmpty)
+                                    ? 'Glossary set'
+                                    : 'Glossary',
+                              ),
+                            ),
                             OutlinedButton.icon(
                               onPressed: () => _openExportSheet(detail),
                               icon: const Icon(Icons.copy_all_outlined, size: 18),
@@ -730,11 +935,18 @@ class _TranscriptTabContent extends StatelessWidget {
     final theme = Theme.of(context);
 
     if (detail.segments.isEmpty && detail.markers.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.notes_outlined,
-        title: 'No transcript yet',
-        message:
-            'Your audio file and waveform are ready locally. Transcript segments will appear once speech-to-text is enabled.',
+        title: switch (detail.meeting.status) {
+          'Uploading' => 'Uploading audio (${detail.meeting.uploadProgress}%)',
+          'Queued' => 'Queued on server',
+          'Transcribing' => 'Transcribing audio...',
+          'Failed' => 'Transcription needs attention',
+          _ => 'No transcript yet',
+        },
+        message: detail.meeting.statusMessage?.isNotEmpty == true
+            ? detail.meeting.statusMessage!
+            : 'Tap Transcribe above to send this recording to your server.',
       );
     }
 
@@ -753,20 +965,36 @@ class _TranscriptTabContent extends StatelessWidget {
             final isPlayingHere = currentSec >= entry.segment.startSec &&
                 currentSec < entry.segment.endSec;
 
-            final speakerName =
-                entry.speaker?.displayName ?? 'Speaker';
+            final seg = entry.segment;
+            final isLowConfidence = !seg.edited &&
+                ((seg.avgLogprob != null && seg.avgLogprob! < -0.5) ||
+                    (seg.noSpeechProb != null && seg.noSpeechProb! >= 0.5) ||
+                    seg.isLoopFlagged);
+
+            final speakerName = entry.speaker?.displayName ?? 'Speaker 1';
             final initials = _initials(speakerName);
             final ts = TimelineMarker.formatTimestamp(
-              (entry.segment.startSec * 1000).round(),
+              (seg.startSec * 1000).round(),
             );
+
+            final bgColor = isPlayingHere
+                ? c.accentSubtle.withValues(alpha: 0.45)
+                : (isLowConfidence
+                    ? c.warningSubtle.withValues(alpha: 0.42)
+                    : c.surface);
+            final borderColor = isPlayingHere
+                ? c.accent
+                : (isLowConfidence
+                    ? c.warning.withValues(alpha: 0.5)
+                    : c.border);
 
             return Container(
               margin: const EdgeInsets.only(bottom: MinuteSpacing.sm),
               decoration: BoxDecoration(
-                color: isPlayingHere ? c.accentSubtle.withValues(alpha: 0.45) : c.surface,
+                color: bgColor,
                 borderRadius: BorderRadius.circular(MinuteRadii.card),
                 border: Border.all(
-                  color: isPlayingHere ? c.accent : c.border,
+                  color: borderColor,
                   width: isPlayingHere ? 1.5 : 1,
                 ),
               ),
@@ -790,16 +1018,30 @@ class _TranscriptTabContent extends StatelessWidget {
                         ),
                         const SizedBox(width: MinuteSpacing.sm),
                         Expanded(
-                          child: Text(
-                            speakerName,
-                            style: theme.textTheme.titleSmall,
+                          child: Wrap(
+                            spacing: MinuteSpacing.xs,
+                            runSpacing: 2,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                speakerName,
+                                style: theme.textTheme.titleSmall,
+                              ),
+                              if (isLowConfidence)
+                                StatusChip(
+                                  label: seg.isLoopFlagged
+                                      ? 'Possible loop'
+                                      : 'Low confidence',
+                                  tone: StatusChipTone.warning,
+                                ),
+                            ],
                           ),
                         ),
                         Semantics(
                           button: true,
                           label: 'Jump to $ts',
                           child: InkWell(
-                            onTap: () => onSeek(entry.segment.startSec),
+                            onTap: () => onSeek(seg.startSec),
                             borderRadius:
                                 BorderRadius.circular(MinuteRadii.sm),
                             child: ConstrainedBox(
@@ -834,13 +1076,22 @@ class _TranscriptTabContent extends StatelessWidget {
                     ),
                     const SizedBox(height: MinuteSpacing.xs),
                     GestureDetector(
-                      onTap: () => onSeek(entry.segment.startSec),
+                      onTap: () => onSeek(seg.startSec),
                       child: Text(
-                        entry.segment.textContent,
-                        style: MinuteTypography.editorialBody(context),
+                        seg.textContent,
+                        style: MinuteTypography.editorialBody(context).copyWith(
+                          decoration: isLowConfidence
+                              ? TextDecoration.underline
+                              : TextDecoration.none,
+                          decorationStyle: isLowConfidence
+                              ? TextDecorationStyle.dashed
+                              : null,
+                          decorationColor: isLowConfidence ? c.warning : null,
+                          decorationThickness: isLowConfidence ? 1.5 : null,
+                        ),
                       ),
                     ),
-                    if (entry.segment.edited) ...[
+                    if (seg.edited) ...[
                       const SizedBox(height: MinuteSpacing.xs),
                       Text(
                         'Edited',
@@ -909,7 +1160,37 @@ class _TranscriptTabContent extends StatelessWidget {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [for (final item in timelineEntries) item.widget],
+      children: [
+        if (detail.segments.isNotEmpty) ...[
+          Container(
+            margin: const EdgeInsets.only(bottom: MinuteSpacing.sm),
+            padding: const EdgeInsets.symmetric(
+              horizontal: MinuteSpacing.md,
+              vertical: MinuteSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              color: c.warningSubtle.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(MinuteRadii.sm),
+              border: Border.all(color: c.warning.withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 16, color: c.warning),
+                const SizedBox(width: MinuteSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Dashed amber underline marks lower-confidence or repeated words — tap to play audio and verify.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: c.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        for (final item in timelineEntries) item.widget,
+      ],
     );
   }
 

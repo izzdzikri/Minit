@@ -12,16 +12,30 @@ class StatusChip extends StatelessWidget {
     this.semanticLabel,
   });
 
-  factory StatusChip.fromMeetingStatus(String status) {
+  factory StatusChip.fromMeetingStatus(
+    String status, {
+    int? progressPercent,
+  }) {
     final lower = status.toLowerCase();
     final tone = switch (lower) {
       'ready' => StatusChipTone.success,
       'recording' => StatusChipTone.accent,
-      'uploading' || 'transcribing' || 'summarizing' => StatusChipTone.warning,
+      'uploading' ||
+      'queued' ||
+      'transcribing' ||
+      'summarizing' =>
+        StatusChipTone.warning,
       'failed' || 'error' => StatusChipTone.danger,
       _ => StatusChipTone.neutral,
     };
-    return StatusChip(label: status, tone: tone, semanticLabel: 'Status: $status');
+    final label = (lower == 'uploading' && progressPercent != null)
+        ? 'Uploading $progressPercent%'
+        : status;
+    return StatusChip(
+      label: label,
+      tone: tone,
+      semanticLabel: 'Status: $label',
+    );
   }
 
   final String label;
