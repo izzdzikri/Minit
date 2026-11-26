@@ -1,0 +1,52 @@
+# Flutter / Dart
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+*.iml
+.idea/
+
+# Android
+local.properties
+.gradle/
+.kotlin/
+*.apk
+*.aab
+captures/
+**/android/key.properties
+key.properties
+*.jks
+*.keystore
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+google-services.json
+service-account*.json
+
+# Backend (future)
+__pycache__/
+*.pyc
+.venv/
+venv/
+storage/
+*.sqlite
+*.db
+
+# Audio and user data
+*.m4a
+*.aac
+*.wav
+*.mp3
+pending/
+
+# OS / editor
+.DS_Store
+*.log
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
