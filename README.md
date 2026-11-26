@@ -41,8 +41,17 @@ cd app && flutter run --debug -d <device_id>
    Keep **Server URL** set to `http://localhost:8000` in the app, then tap **Test connection**. (Re-run `adb reverse tcp:8000 tcp:8000` if you unplug and reconnect USB.)
 3. **Option B — Same Wi-Fi / LAN:**
    Find your PC's local IP (`ip -4 addr` on Linux), ensure TCP port `8000` is open in your firewall (`sudo firewall-cmd --add-port=8000/tcp` or `ufw allow 8000/tcp`), and set **Server URL** in the app to `http://<PC_LAN_IP>:8000`.
-4. **Debug vs. Release Security:**
-   Only debug builds (`flutter run --debug` / debug APK) allow plain `http://` traffic (`app/android/app/src/debug/res/xml/network_security_config.xml`). Release builds enforce `https://` only (`cleartextTrafficPermitted="false"`). Use HTTPS (e.g., Tailscale HTTPS, Caddy, or Nginx reverse proxy) for any release deployment.
+4. **Option C — Remote Access via Tailscale Serve (HTTPS, works on Release builds):**
+   If you want to upload and transcribe away from home Wi-Fi (or use a release APK that requires `https://`), run Tailscale on both your backend PC and your phone and expose port `8000` over Tailscale HTTPS (nothing is installed automatically; install Tailscale yourself first):
+   ```bash
+   tailscale serve --bg 8000
+   tailscale serve status
+   ```
+   Copy the HTTPS MagicDNS URL printed by `tailscale serve status` (for example, `https://<machine>.<tailnet>.ts.net`, with **no** `:8000` suffix).
+   - **What changes in the app:** Open **Settings -> Transcription server -> Server URL**, change it from `http://localhost:8000` to `https://<machine>.<tailnet>.ts.net`, keep your `API_TOKEN` from `backend/.env`, and tap **Test connection**. When you next upload or tap **Transcribe**, the one-time upload consent dialog will ask you to confirm the new URL.
+   - To stop exposing it later: `tailscale serve --https=443 off`.
+5. **Debug vs. Release Security:**
+   Only debug builds (`flutter run --debug` / debug APK) allow plain `http://` traffic (`app/android/app/src/debug/res/xml/network_security_config.xml`). Release builds enforce `https://` only (`cleartextTrafficPermitted="false"`). Tailscale Serve (`https://...ts.net`), Caddy, or Nginx TLS satisfies release builds cleanly without enabling cleartext HTTP.
 
 ## Tests & Linting
 

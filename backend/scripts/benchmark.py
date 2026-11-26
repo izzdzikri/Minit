@@ -811,6 +811,14 @@ def score_existing_summary(
     data["scoring_status"] = "SCORED"
     data["reference_clip"] = ref_clip
     data["reference_range_sec"] = [ref_start, ref_end]
+    rows.sort(
+        key=lambda r: (
+            1 if r.wer is None else 0,
+            r.wer if r.wer is not None else float("inf"),
+            r.cer if r.cer is not None else float("inf"),
+            r.rtf if r.rtf is not None else float("inf"),
+        )
+    )
     data["results"] = [asdict(r) for r in rows]
     summary_json.write_text(
         json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
