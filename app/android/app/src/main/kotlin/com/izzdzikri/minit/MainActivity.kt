@@ -1,15 +1,15 @@
-package com.izzdzikri.minute
+package com.izzdzikri.minit
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
-    private var uiBridge: MinuteNativeBridge? = null
+    private var uiBridge: MinitNativeBridge? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         uiBridge?.dispose()
-        uiBridge = MinuteNativeBridge(
+        uiBridge = MinitNativeBridge(
             applicationContext,
             flutterEngine.dartExecutor.binaryMessenger,
         )

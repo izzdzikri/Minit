@@ -1,4 +1,4 @@
-package com.izzdzikri.minute
+package com.izzdzikri.minit
 
 import android.content.ComponentName
 import android.content.Context
@@ -11,6 +11,9 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -31,14 +34,14 @@ import kotlin.math.max
  * Shared native Android bridge attached to both the UI FlutterEngine and the
  * foreground-service background FlutterEngine.
  */
-class MinuteNativeBridge(
+class MinitNativeBridge(
     private val context: Context,
     messenger: BinaryMessenger,
 ) : MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
 
     companion object {
-        private const val METHOD_CHANNEL = "com.izzdzikri.minute/native"
-        private const val EVENT_CHANNEL = "com.izzdzikri.minute/audio_events"
+        private const val METHOD_CHANNEL = "com.izzdzikri.minit/native"
+        private const val EVENT_CHANNEL = "com.izzdzikri.minit/audio_events"
 
         private val SAMPLE_RATES = intArrayOf(
             96000, 88200, 64000, 48000, 44100, 32000,
@@ -52,10 +55,13 @@ class MinuteNativeBridge(
     private val executor = Executors.newSingleThreadExecutor()
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    private val connectivityManager =
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     private var eventSink: EventChannel.EventSink? = null
     private var deviceCallback: AudioDeviceCallback? = null
     private var recordingCallback: AudioManager.AudioRecordingCallback? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var lastClientSilenced: Boolean = false
 
     init {
@@ -127,6 +133,10 @@ class MinuteNativeBridge(
                 result.success(openAutoStartSettings())
             }
 
+            "isNetworkOnline" -> {
+                result.success(checkNetworkOnline())
+            }
+
             else -> result.notImplemented()
         }
     }
@@ -188,6 +198,33 @@ class MinuteNativeBridge(
         lastClientSilenced = false
         recordingCallback = recCallback
         audioManager.registerAudioRecordingCallback(recCallback, mainHandler)
+
+        try {
+            val netCb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    emitEvent(mapOf("type" to "connectivity", "isOnline" to true))
+                }
+
+                override fun onLost(network: Network) {
+                    emitEvent(mapOf("type" to "connectivity", "isOnline" to checkNetworkOnline()))
+                }
+            }
+            networkCallback = netCb
+            connectivityManager.registerDefaultNetworkCallback(netCb)
+        } catch (_: Exception) {
+            // Best-effort connectivity monitoring.
+        }
+    }
+
+    private fun checkNetworkOnline(): Boolean {
+        return try {
+            val network = connectivityManager.activeNetwork ?: return false
+            val caps = connectivityManager.getNetworkCapabilities(network) ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun stopAudioCallbacks() {
@@ -195,6 +232,12 @@ class MinuteNativeBridge(
         deviceCallback = null
         recordingCallback?.let { audioManager.unregisterAudioRecordingCallback(it) }
         recordingCallback = null
+        networkCallback?.let {
+            try {
+                connectivityManager.unregisterNetworkCallback(it)
+            } catch (_: Exception) {}
+        }
+        networkCallback = null
         lastClientSilenced = false
     }
 

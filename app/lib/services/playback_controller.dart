@@ -1,13 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
-import '../models/recording_item.dart';
-
-/// Manages `just_audio` playback and audio session interruptions
-/// (e.g. pausing automatically when headphones are unplugged).
+/// Manages `just_audio` playback, speed control (`0.75x`–`2.0x`), +/-10s skip,
+/// and audio-session interruptions (e.g. pausing when headphones unplug).
 class PlaybackController extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
 
@@ -16,18 +15,23 @@ class PlaybackController extends ChangeNotifier {
   StreamSubscription<Duration?>? _durationSub;
   StreamSubscription<void>? _noisySub;
 
-  RecordingItem? _currentItem;
+  String? _currentMeetingId;
+  String? _currentPath;
   bool _isPlaying = false;
   bool _isLoading = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  double _speed = 1.0;
   String? _errorMessage;
+  bool _isDisposed = false;
 
-  RecordingItem? get currentItem => _currentItem;
+  String? get currentMeetingId => _currentMeetingId;
+  String? get currentPath => _currentPath;
   bool get isPlaying => _isPlaying;
   bool get isLoading => _isLoading;
   Duration get position => _position;
   Duration get duration => _duration;
+  double get speed => _speed;
   String? get errorMessage => _errorMessage;
 
   Future<void> init() async {
@@ -71,48 +75,129 @@ class PlaybackController extends ChangeNotifier {
     });
   }
 
-  Future<void> togglePlay(RecordingItem item) async {
+  /// Preloads [filePath] for [meetingId] without auto-playing, optionally
+  /// seeking to [initialSeek].
+  Future<void> loadMeetingAudio({
+    required String meetingId,
+    required String? filePath,
+    required Duration fallbackDuration,
+    Duration? initialSeek,
+  }) async {
     _errorMessage = null;
-    try {
-      if (_currentItem?.id == item.id) {
-        if (_player.playing) {
-          await _player.pause();
-        } else {
-          await _player.play();
-        }
-        return;
+    if (filePath == null || filePath.isEmpty || !File(filePath).existsSync()) {
+      if (_currentMeetingId != meetingId) {
+        await stop();
       }
+      _currentMeetingId = meetingId;
+      _currentPath = null;
+      _duration = fallbackDuration;
+      _position = initialSeek ?? Duration.zero;
+      notifyListeners();
+      return;
+    }
 
-      _currentItem = item;
-      _position = Duration.zero;
-      _duration = item.duration;
+    if (_currentMeetingId == meetingId && _currentPath == filePath) {
+      if (initialSeek != null) {
+        await seek(initialSeek);
+      }
+      return;
+    }
+
+    try {
+      _currentMeetingId = meetingId;
+      _currentPath = filePath;
+      _position = initialSeek ?? Duration.zero;
+      _duration = fallbackDuration;
       _isLoading = true;
       notifyListeners();
 
-      await _player.setFilePath(item.filePath);
-      _duration = _player.duration ?? item.duration;
-      await _player.play();
-    } catch (e) {
-      _errorMessage = 'Playback error: $e';
+      await _player.setFilePath(filePath);
+      await _player.setSpeed(_speed);
+      _duration = _player.duration ?? fallbackDuration;
+      if (initialSeek != null && initialSeek > Duration.zero) {
+        await _player.seek(initialSeek);
+        _position = initialSeek;
+      }
       _isLoading = false;
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = 'Could not load audio file.';
+      _isLoading = false;
+      _isPlaying = false;
+      notifyListeners();
+      assert(() {
+        debugPrint('PlaybackController load error: $e');
+        return true;
+      }());
+    }
+  }
+
+  Future<void> togglePlay({
+    required String meetingId,
+    required String? filePath,
+    required Duration fallbackDuration,
+  }) async {
+    _errorMessage = null;
+    if (filePath == null || filePath.isEmpty || !File(filePath).existsSync()) {
+      _errorMessage = 'No local audio file attached to this demo meeting.';
+      notifyListeners();
+      return;
+    }
+
+    if (_currentMeetingId != meetingId || _currentPath != filePath) {
+      await loadMeetingAudio(
+        meetingId: meetingId,
+        filePath: filePath,
+        fallbackDuration: fallbackDuration,
+      );
+      if (_errorMessage != null) return;
+    }
+
+    try {
+      if (_player.playing) {
+        await _player.pause();
+      } else {
+        await _player.play();
+      }
+    } catch (e) {
+      _errorMessage = 'Playback error: could not play this file.';
       _isPlaying = false;
       notifyListeners();
     }
   }
 
   Future<void> seek(Duration target) async {
-    if (_currentItem == null) return;
-    await _player.seek(target);
+    final maxDur = _duration > Duration.zero ? _duration : target;
+    final clamped = Duration(
+      milliseconds: target.inMilliseconds.clamp(0, maxDur.inMilliseconds),
+    );
+    _position = clamped;
+    notifyListeners();
+    if (_currentPath != null) {
+      await _player.seek(clamped);
+    }
   }
 
-  Future<void> stopIfCurrent(RecordingItem item) async {
-    if (_currentItem?.id != item.id) return;
-    await stop();
+  Future<void> skipBy(Duration delta) async {
+    await seek(_position + delta);
+  }
+
+  Future<void> setSpeed(double newSpeed) async {
+    _speed = newSpeed.clamp(0.75, 2.0);
+    if (_currentPath != null) {
+      await _player.setSpeed(_speed);
+    }
+    notifyListeners();
   }
 
   Future<void> stop() async {
-    await _player.stop();
-    _currentItem = null;
+    if (_isDisposed) return;
+    try {
+      await _player.stop();
+    } catch (_) {}
+    if (_isDisposed) return;
+    _currentMeetingId = null;
+    _currentPath = null;
     _isPlaying = false;
     _isLoading = false;
     _position = Duration.zero;
@@ -122,6 +207,7 @@ class PlaybackController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _playerStateSub?.cancel();
     _positionSub?.cancel();
     _durationSub?.cancel();

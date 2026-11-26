@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -9,7 +10,9 @@ import 'package:path/path.dart' as p;
 import 'package:record/record.dart';
 
 import '../models/recording_item.dart';
+import 'app_settings.dart';
 import 'native_bridge.dart';
+import 'peaks_storage.dart';
 import 'recording_storage.dart';
 
 @pragma('vm:entry-point')
@@ -17,9 +20,10 @@ void startRecordingTaskCallback() {
   FlutterForegroundTask.setTaskHandler(RecordingTaskHandler());
 }
 
-/// Foreground-service task handler that owns the microphone recording session,
-/// writes continuous 30-second AAC segments to disk, monitors interruptions and
-/// free storage, and merges segments into a single `.m4a` file on stop.
+/// Foreground-service task handler that owns microphone capture (`record` AAC
+/// stream), writes continuous 30s `.aac` audio segments and matching 100 ms
+/// `.peaks` waveform sidecars, tracks markers/interruptions, and merges both
+/// files cleanly when stopped.
 class RecordingTaskHandler extends TaskHandler {
   // At 16 kHz mono AAC-LC, each ADTS frame is 1024 samples = 64 ms.
   // 469 frames = 30.016 seconds of active audio per segment.
@@ -27,24 +31,34 @@ class RecordingTaskHandler extends TaskHandler {
   static const int _lowStorageWarningBytes = 50 * 1024 * 1024;
   static const int _criticalStorageBytes = 15 * 1024 * 1024;
   static const int _silenceMarkerThresholdMs = 5000;
+  static const int _recentLevelHistoryMax = 300; // 30s @ 100ms
 
   AudioRecorder? _recorder;
   StreamSubscription<Uint8List>? _audioSub;
   StreamSubscription<RecordState>? _stateSub;
   StreamSubscription<RecordStop>? _stopSub;
   StreamSubscription<Map<String, dynamic>>? _nativeEventSub;
+  Timer? _amplitudeTimer;
 
   final Stopwatch _activeStopwatch = Stopwatch();
   final List<String> _segmentPaths = <String>[];
-  final List<SilenceMarker> _silenceMarkers = <SilenceMarker>[];
+  final List<String> _peaksPaths = <String>[];
+  final List<TimelineMarker> _markers = <TimelineMarker>[];
+  final ListQueue<double> _recentLevels = ListQueue<double>(_recentLevelHistoryMax);
+  final List<double> _pendingLevelBatch = <double>[];
+  int _lastLevelEmitMs = 0;
+  int _markersVersion = 0;
+  int _lastSentMarkersVersion = -1;
 
   String _sessionId = '';
   String _title = 'Meeting Recording';
+  String _language = 'auto';
   DateTime _createdAt = DateTime.now();
   String _sessionDir = '';
   String _recordingsDir = '';
 
   RandomAccessFile? _currentRaf;
+  RandomAccessFile? _currentPeaksRaf;
   int _currentSegmentFrames = 0;
   int _totalFrames = 0;
   int _segmentIndex = 0;
@@ -52,18 +66,25 @@ class RecordingTaskHandler extends TaskHandler {
   int _lastFreeBytes = 0;
 
   bool _isForceMode = false;
+  OtherAppAudioBehavior _otherAppBehavior = OtherAppAudioBehavior.keepRecording;
   bool _isPaused = false;
   bool _userInitiatedPause = false;
   bool _userPausedExplicitly = false;
   bool _userInitiatedStop = false;
   bool _finalizing = false;
   bool _isPowerSaveMode = false;
+  bool _samplingAmplitude = false;
 
   bool _pausedByCall = false;
   bool _pausedByHeadset = false;
   int _callEndedTicks = 0;
   int _callResumeAttempts = 0;
   bool _checkingCallState = false;
+
+  int? _pendingGapActiveMs;
+  DateTime? _pendingGapWallStart;
+  MarkerType? _pendingGapType;
+  String? _pendingGapReason;
 
   String? _statusMessage;
   String _messageLevel = 'info';
@@ -82,9 +103,15 @@ class RecordingTaskHandler extends TaskHandler {
     _sessionId = 'rec_${_createdAt.millisecondsSinceEpoch}';
     _title = await FlutterForegroundTask.getData<String>(key: 'pending_title') ??
         _defaultTitle(_createdAt);
+    _language =
+        await FlutterForegroundTask.getData<String>(key: 'pending_language') ??
+            'auto';
+
+    final settings = await AppSettingsStorage.load();
     _isForceMode =
         await FlutterForegroundTask.getData<bool>(key: 'pending_force_mode') ??
-            await RecordingStorage.getForceMode();
+            settings.forceRecordMode;
+    _otherAppBehavior = settings.otherAppAudioBehavior;
 
     final recordingsDir = await RecordingStorage.getRecordingsDirectory();
     final pendingRoot = await RecordingStorage.getPendingRootDirectory();
@@ -119,14 +146,19 @@ class RecordingTaskHandler extends TaskHandler {
       _openNextSegmentSync();
       _writeSessionManifestSync();
 
-      // Mic-only capture. In force mode we ignore audio focus loss and follow
-      // route changes (continuing on phone mic when a headset is unplugged).
+      // Mic-only capture.
+      // - Force mode ignores focus loss and follows route changes (phone mic).
+      // - Normal mode with "keepRecording" (default) ignores non-call media focus
+      //   loss while still pausing + auto-resuming on incoming phone/VoIP calls.
+      final ignoreMediaFocus = _isForceMode ||
+          _otherAppBehavior == OtherAppAudioBehavior.keepRecording;
+
       final config = RecordConfig(
         encoder: AudioEncoder.aacLc,
         sampleRate: 16000,
         numChannels: 1,
         bitRate: 32000,
-        audioInterruption: _isForceMode
+        audioInterruption: ignoreMediaFocus
             ? AudioInterruptionMode.none
             : AudioInterruptionMode.pause,
         audioRouteChange: _isForceMode
@@ -142,6 +174,7 @@ class RecordingTaskHandler extends TaskHandler {
       final stream = await _recorder!.startStream(config);
       _activeStopwatch.start();
       _isPaused = false;
+      _startAmplitudeTimer();
 
       if (_lastFreeBytes > 0 && _lastFreeBytes < _lowStorageWarningBytes) {
         final mb = (_lastFreeBytes / (1024 * 1024)).toStringAsFixed(0);
@@ -161,9 +194,7 @@ class RecordingTaskHandler extends TaskHandler {
             'Audio stream error ($error). Partial recording saved.',
           );
         },
-        onDone: () {
-          // Handled via onStopped/finalize when the stream ends.
-        },
+        onDone: () {},
       );
 
       await _updateNotification();
@@ -193,15 +224,20 @@ class RecordingTaskHandler extends TaskHandler {
           _activeStopwatch.elapsedMilliseconds - _activeSilenceStartMs!;
       if (silencedForMs > _silenceMarkerThresholdMs) {
         _notifiedOngoingSilence = true;
-        final startLabel = SilenceMarker(
-          startMs: _activeSilenceStartMs!,
-          endMs: _activeSilenceStartMs!,
-          reason: _activeSilenceReason ?? 'Mic silenced',
-        ).formattedRange.split('-').first;
+        final startLabel = TimelineMarker.formatTimestamp(_activeSilenceStartMs!);
         _statusMessage =
             'Mic silenced since $startLabel (>5s) — keeping recording.';
         _messageLevel = 'warning';
       }
+    }
+
+    // In Normal mode when "When another app plays audio" is set to keepRecording,
+    // AudioInterruptionMode.none is active so we watch AudioManager.mode for
+    // incoming cellular/VoIP calls and pause/auto-resume around calls.
+    if (!_isForceMode &&
+        !_isPaused &&
+        _otherAppBehavior == OtherAppAudioBehavior.keepRecording) {
+      unawaited(_checkCallStartInNormalMode());
     }
 
     if (_isPaused &&
@@ -230,6 +266,33 @@ class RecordingTaskHandler extends TaskHandler {
       case 'resume':
         unawaited(_resumeByUser());
         break;
+      case 'add_marker':
+        _addUserMarker(data['label']?.toString());
+        break;
+      case 'update_meta':
+        final newTitle = data['title']?.toString().trim();
+        final newLang = data['language']?.toString().trim();
+        if (newTitle != null && newTitle.isNotEmpty) {
+          _title = newTitle;
+        }
+        if (newLang != null && newLang.isNotEmpty) {
+          _language = newLang;
+        }
+        _writeSessionManifestSync();
+        break;
+      case 'set_force_mode':
+        final enabled = data['enabled'] as bool?;
+        if (enabled != null && enabled != _isForceMode && !_finalizing) {
+          _isForceMode = enabled;
+          _writeSessionManifestSync();
+          _statusMessage = enabled
+              ? 'FORCE mode enabled (never auto-pauses).'
+              : 'Normal interruption rules active.';
+          _messageLevel = 'info';
+          unawaited(_updateNotification());
+          _sendStatus(state: _isPaused ? 'paused' : 'recording');
+        }
+        break;
       case 'stop':
         unawaited(
           _stopAndFinalize(
@@ -244,6 +307,7 @@ class RecordingTaskHandler extends TaskHandler {
           state: _finalizing
               ? 'finalizing'
               : (_isPaused ? 'paused' : 'recording'),
+          includeRecentLevels: true,
         );
         break;
     }
@@ -264,7 +328,7 @@ class RecordingTaskHandler extends TaskHandler {
 
   @override
   void onNotificationPressed() {
-    // Tapping the foreground notification opens MainActivity via its PendingIntent.
+    FlutterForegroundTask.sendDataToMain({'event': 'open_record'});
   }
 
   @override
@@ -278,6 +342,79 @@ class RecordingTaskHandler extends TaskHandler {
         callStopService: false,
       );
     }
+  }
+
+  void _startAmplitudeTimer() {
+    _amplitudeTimer?.cancel();
+    _amplitudeTimer = Timer.periodic(
+      const Duration(milliseconds: 100),
+      (_) => unawaited(_sampleAmplitudeTick()),
+    );
+  }
+
+  Future<void> _sampleAmplitudeTick() async {
+    if (_samplingAmplitude || _isPaused || _finalizing || _recorder == null) {
+      return;
+    }
+    _samplingAmplitude = true;
+    try {
+      double normalized;
+      if (_activeSilenceStartMs != null) {
+        normalized = 0.0;
+      } else {
+        final amp = await _recorder!.getAmplitude();
+        normalized = PeaksStorage.normalizeAmplitudeDb(amp.current);
+      }
+
+      final byte = PeaksStorage.encodePeakByte(normalized);
+      try {
+        _currentPeaksRaf?.writeByteSync(byte);
+      } catch (_) {}
+
+      if (_recentLevels.length >= _recentLevelHistoryMax) {
+        _recentLevels.removeFirst();
+      }
+      _recentLevels.addLast(normalized);
+
+      _pendingLevelBatch.add(normalized);
+      final elapsedMs = _activeStopwatch.elapsedMilliseconds;
+      if (_lastLevelEmitMs == 0 ||
+          elapsedMs - _lastLevelEmitMs >= 100 ||
+          _pendingLevelBatch.length >= 4) {
+        _lastLevelEmitMs = elapsedMs;
+        final batch = List<double>.of(_pendingLevelBatch, growable: false);
+        _pendingLevelBatch.clear();
+        FlutterForegroundTask.sendDataToMain({
+          'event': 'levels',
+          'samples': batch,
+          'elapsedMs': elapsedMs,
+        });
+      }
+    } catch (_) {
+      // Ignore transient amplitude read failures.
+    } finally {
+      _samplingAmplitude = false;
+    }
+  }
+
+  void _addUserMarker(String? customLabel) {
+    if (_finalizing) return;
+    final ms = _activeStopwatch.elapsedMilliseconds;
+    final label = (customLabel != null && customLabel.trim().isNotEmpty)
+        ? customLabel.trim()
+        : 'Important moment';
+    final marker = TimelineMarker(
+      type: MarkerType.marker,
+      startMs: ms,
+      endMs: ms,
+      reason: label,
+    );
+    _markers.add(marker);
+    _markersVersion++;
+    _writeSessionManifestSync();
+    _statusMessage = 'Marked: ${marker.displayLabel}';
+    _messageLevel = 'info';
+    _sendStatus(state: _isPaused ? 'paused' : 'recording');
   }
 
   void _listenNativeEvents() {
@@ -297,6 +434,12 @@ class RecordingTaskHandler extends TaskHandler {
       } else if (type == 'mic_silenced') {
         final silenced = event['silenced'] as bool? ?? true;
         final isCall = event['isCallActive'] as bool? ?? false;
+
+        if (!_isForceMode && isCall && silenced && !_isPaused && !_finalizing) {
+          unawaited(_pauseForDetectedCall());
+          return;
+        }
+
         if (silenced) {
           if (_activeSilenceStartMs == null && !_isPaused && !_finalizing) {
             _activeSilenceStartMs = _activeStopwatch.elapsedMilliseconds;
@@ -331,18 +474,26 @@ class RecordingTaskHandler extends TaskHandler {
           _userPausedExplicitly = true;
           _pausedByCall = false;
           _pausedByHeadset = false;
+          _beginPendingGap(MarkerType.pauseGap, 'Paused by user');
           _statusMessage = 'Recording paused. Segments flushed to disk.';
           _messageLevel = 'info';
           _sendStatus(state: 'paused');
           unawaited(_updateNotification());
+        } else if (_pausedByCall) {
+          _beginPendingGap(MarkerType.callGap, 'Incoming phone or VoIP call');
+          _statusMessage =
+              'Paused: incoming phone or VoIP call detected. Will auto-resume when the call ends.';
+          _messageLevel = 'warning';
+          _sendStatus(state: 'paused');
+          unawaited(_updateNotification());
         } else if (_isForceMode) {
-          // Force mode must never stay auto-paused; immediately resume on phone mic.
           unawaited(_forceResumeImmediately());
         } else {
           unawaited(_classifyAndReportPauseInterruption());
         }
       } else if (state == RecordState.record) {
         final wasCallPaused = _pausedByCall;
+        _closePendingGap();
         _activeStopwatch.start();
         _isPaused = false;
         _userPausedExplicitly = false;
@@ -373,6 +524,68 @@ class RecordingTaskHandler extends TaskHandler {
     });
   }
 
+  void _beginPendingGap(MarkerType type, String reason) {
+    _pendingGapActiveMs ??= _activeStopwatch.elapsedMilliseconds;
+    _pendingGapWallStart ??= DateTime.now();
+    _pendingGapType = type;
+    _pendingGapReason = reason;
+    _writeSessionManifestSync();
+  }
+
+  void _closePendingGap() {
+    final activeMs = _pendingGapActiveMs;
+    final wallStart = _pendingGapWallStart;
+    final type = _pendingGapType;
+    final reason = _pendingGapReason;
+
+    _pendingGapActiveMs = null;
+    _pendingGapWallStart = null;
+    _pendingGapType = null;
+    _pendingGapReason = null;
+
+    if (activeMs == null || wallStart == null || type == null) return;
+    final gapDurationMs =
+        DateTime.now().difference(wallStart).inMilliseconds.clamp(0, 86400000);
+    _markers.add(
+      TimelineMarker(
+        type: type,
+        startMs: activeMs,
+        endMs: activeMs,
+        reason: reason ?? type.name,
+        gapDurationMs: gapDurationMs,
+      ),
+    );
+    _markersVersion++;
+    _writeSessionManifestSync();
+  }
+
+  Future<void> _checkCallStartInNormalMode() async {
+    if (_checkingCallState || _finalizing || _isPaused || _isForceMode) return;
+    _checkingCallState = true;
+    try {
+      final env = await NativeBridge.getAudioEnvironmentState();
+      if (env.isCallActive && !_isPaused && !_finalizing) {
+        await _pauseForDetectedCall();
+      }
+    } catch (_) {
+    } finally {
+      _checkingCallState = false;
+    }
+  }
+
+  Future<void> _pauseForDetectedCall() async {
+    if (_finalizing || _isPaused || _isForceMode) return;
+    _pausedByCall = true;
+    _pausedByHeadset = false;
+    _callEndedTicks = 0;
+    _callResumeAttempts = 0;
+    try {
+      await _recorder?.pause();
+    } catch (_) {
+      _pausedByCall = false;
+    }
+  }
+
   Future<void> _forceResumeImmediately() async {
     try {
       await _recorder?.resume();
@@ -392,6 +605,7 @@ class RecordingTaskHandler extends TaskHandler {
       _pausedByHeadset = true;
       _pausedByCall = false;
       final name = _lastUnpluggedDeviceName ?? 'Headset';
+      _beginPendingGap(MarkerType.pauseGap, '$name unplugged');
       _statusMessage =
           'Paused: $name unplugged. Audio saved safely — tap Resume for phone mic or Stop to save.';
       _messageLevel = 'warning';
@@ -402,11 +616,13 @@ class RecordingTaskHandler extends TaskHandler {
         _pausedByHeadset = false;
         _callEndedTicks = 0;
         _callResumeAttempts = 0;
+        _beginPendingGap(MarkerType.callGap, 'Incoming phone or VoIP call');
         _statusMessage =
             'Paused: incoming phone or VoIP call detected. Will auto-resume when the call ends.';
       } else {
         _pausedByCall = false;
         _pausedByHeadset = false;
+        _beginPendingGap(MarkerType.pauseGap, 'Another app took audio focus');
         _statusMessage =
             'Paused: another app took audio focus. Audio saved safely — tap Resume or Stop.';
       }
@@ -432,6 +648,7 @@ class RecordingTaskHandler extends TaskHandler {
       if (env.isCallActive) {
         if (!_pausedByCall) {
           _pausedByCall = true;
+          _beginPendingGap(MarkerType.callGap, 'Incoming phone or VoIP call');
           _statusMessage =
               'Paused: call in progress. Will auto-resume when the call ends.';
           _messageLevel = 'warning';
@@ -460,7 +677,6 @@ class RecordingTaskHandler extends TaskHandler {
         }
       }
     } catch (_) {
-      // Ignore transient query errors; next repeat tick will retry.
     } finally {
       _checkingCallState = false;
     }
@@ -476,12 +692,14 @@ class RecordingTaskHandler extends TaskHandler {
 
     final endMs = _activeStopwatch.elapsedMilliseconds;
     if (endMs - startMs > _silenceMarkerThresholdMs) {
-      final marker = SilenceMarker(
+      final marker = TimelineMarker(
+        type: MarkerType.silence,
         startMs: startMs,
         endMs: endMs,
         reason: reason,
       );
-      _silenceMarkers.add(marker);
+      _markers.add(marker);
+      _markersVersion++;
       _writeSessionManifestSync();
       if (!_finalizing) {
         _statusMessage = 'Marked: ${marker.displayLabel}.';
@@ -544,17 +762,22 @@ class RecordingTaskHandler extends TaskHandler {
 
   void _openNextSegmentSync() {
     _segmentIndex++;
-    final fileName = 'seg_${_segmentIndex.toString().padLeft(4, '0')}.aac';
-    final segPath = p.join(_sessionDir, fileName);
-    final file = File(segPath);
-    _currentRaf = file.openSync(mode: FileMode.writeOnlyAppend);
+    final indexStr = _segmentIndex.toString().padLeft(4, '0');
+    final segPath = p.join(_sessionDir, 'seg_$indexStr.aac');
+    final peaksPath = p.join(_sessionDir, 'seg_$indexStr.peaks');
+    _currentRaf = File(segPath).openSync(mode: FileMode.writeOnlyAppend);
+    _currentPeaksRaf = File(peaksPath).openSync(mode: FileMode.writeOnlyAppend);
     _currentSegmentFrames = 0;
     _segmentPaths.add(segPath);
+    _peaksPaths.add(peaksPath);
   }
 
   void _flushCurrentSegmentSync() {
     try {
       _currentRaf?.flushSync();
+    } catch (_) {}
+    try {
+      _currentPeaksRaf?.flushSync();
     } catch (_) {}
   }
 
@@ -565,7 +788,14 @@ class RecordingTaskHandler extends TaskHandler {
     try {
       _currentRaf?.closeSync();
     } catch (_) {}
+    try {
+      _currentPeaksRaf?.flushSync();
+    } catch (_) {}
+    try {
+      _currentPeaksRaf?.closeSync();
+    } catch (_) {}
     _currentRaf = null;
+    _currentPeaksRaf = null;
     _currentSegmentFrames = 0;
   }
 
@@ -577,9 +807,11 @@ class RecordingTaskHandler extends TaskHandler {
         title: _title,
         createdAt: _createdAt,
         segmentFiles: _segmentPaths.map(p.basename).toList(),
+        peaksFiles: _peaksPaths.map(p.basename).toList(),
         elapsedMs: _activeStopwatch.elapsedMilliseconds,
+        language: _language,
         isForceMode: _isForceMode,
-        silenceMarkers: List<SilenceMarker>.unmodifiable(_silenceMarkers),
+        markers: List<TimelineMarker>.unmodifiable(_markers),
         note: _statusMessage,
       );
       final metaPath = p.join(_sessionDir, 'session.json');
@@ -637,8 +869,11 @@ class RecordingTaskHandler extends TaskHandler {
     if (_finalizing) return;
     _finalizing = true;
     _userInitiatedStop = true;
+    _amplitudeTimer?.cancel();
+    _amplitudeTimer = null;
     _activeStopwatch.stop();
     _closeActiveSilenceWindow();
+    _closePendingGap();
 
     _statusMessage = 'Finalizing and merging audio segments...';
     _messageLevel = isPartial ? 'warning' : 'info';
@@ -673,24 +908,32 @@ class RecordingTaskHandler extends TaskHandler {
 
     if (nonEmptySegments.isNotEmpty) {
       final outputPath = p.join(_recordingsDir, '$_sessionId.m4a');
+      final outputPeaksPath = p.join(_recordingsDir, '$_sessionId.peaks');
       try {
         final merged = await NativeBridge.mergeAacSegmentsToM4a(
           segmentPaths: nonEmptySegments,
           outputPath: outputPath,
         );
+        final mergedPeaks = await PeaksStorage.mergeSegmentPeaks(
+          segmentPeaksPaths: _peaksPaths,
+          outputPeaksPath: outputPeaksPath,
+        );
+
         final item = RecordingItem(
           id: _sessionId,
           title: isPartial ? '$_title (Partial)' : _title,
           filePath: merged.outputPath,
+          peaksPath: mergedPeaks,
           createdAt: _createdAt,
           durationMs: merged.durationMs > 0
               ? merged.durationMs
               : _activeStopwatch.elapsedMilliseconds,
           sizeBytes: merged.sizeBytes,
           segmentCount: merged.segmentsMerged,
+          language: _language,
           isPartial: isPartial,
           isForceMode: _isForceMode,
-          silenceMarkers: List<SilenceMarker>.unmodifiable(_silenceMarkers),
+          markers: List<TimelineMarker>.unmodifiable(_markers),
           note: isPartial ? reasonMessage : null,
         );
         await RecordingStorage.saveMetadata(item);
@@ -742,6 +985,8 @@ class RecordingTaskHandler extends TaskHandler {
   }
 
   Future<void> _cleanupFailedStart() async {
+    _amplitudeTimer?.cancel();
+    _amplitudeTimer = null;
     await _audioSub?.cancel();
     await _stateSub?.cancel();
     await _stopSub?.cancel();
@@ -757,7 +1002,8 @@ class RecordingTaskHandler extends TaskHandler {
     final elapsed = _formatElapsed(_activeStopwatch.elapsed);
     final segCount = _segmentPaths.length;
     final stateLabel = _isPaused ? 'Paused' : 'Recording';
-    final titlePrefix = _isForceMode ? 'Minute • FORCE $stateLabel' : 'Minute • $stateLabel';
+    final titlePrefix =
+        _isForceMode ? 'Minit • FORCE $stateLabel' : 'Minit • $stateLabel';
     final forceTag = _isForceMode ? 'FORCE • ' : '';
     await FlutterForegroundTask.updateService(
       notificationTitle: titlePrefix,
@@ -765,7 +1011,15 @@ class RecordingTaskHandler extends TaskHandler {
     );
   }
 
-  void _sendStatus({required String state}) {
+  void _sendStatus({
+    required String state,
+    bool includeRecentLevels = false,
+  }) {
+    final markersChanged =
+        includeRecentLevels || _markersVersion != _lastSentMarkersVersion;
+    if (markersChanged) {
+      _lastSentMarkersVersion = _markersVersion;
+    }
     FlutterForegroundTask.sendDataToMain({
       'event': 'status',
       'state': state,
@@ -775,7 +1029,11 @@ class RecordingTaskHandler extends TaskHandler {
       'freeBytes': _lastFreeBytes,
       'isPowerSaveMode': _isPowerSaveMode,
       'isForceMode': _isForceMode,
-      'silenceCount': _silenceMarkers.length,
+      'language': _language,
+      'title': _title,
+      if (markersChanged)
+        'markers': _markers.map((m) => m.toJson()).toList(),
+      if (includeRecentLevels) 'recentLevels': _recentLevels.toList(),
       'message': _statusMessage,
       'messageLevel': _messageLevel,
     });

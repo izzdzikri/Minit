@@ -1,4 +1,4 @@
-package com.izzdzikri.minute
+package com.izzdzikri.minit
 
 import android.app.Application
 import com.pravera.flutter_foreground_task.FlutterForegroundTaskLifecycleListener
@@ -12,13 +12,13 @@ import io.flutter.embedding.engine.FlutterEngine
  * even when the UI Activity is closed or the screen is locked.
  */
 class MainApplication : Application() {
-    private var backgroundBridge: MinuteNativeBridge? = null
+    private var backgroundBridge: MinitNativeBridge? = null
 
     private val taskLifecycleListener = object : FlutterForegroundTaskLifecycleListener {
         override fun onEngineCreate(flutterEngine: FlutterEngine?) {
             if (flutterEngine != null) {
                 backgroundBridge?.dispose()
-                backgroundBridge = MinuteNativeBridge(
+                backgroundBridge = MinitNativeBridge(
                     applicationContext,
                     flutterEngine.dartExecutor.binaryMessenger,
                 )

@@ -85,9 +85,9 @@ class PermissionsService {
         mfg.contains('vivo')) {
       return const [
         '1. Allow "Don\'t optimize" / Unrestricted battery usage when prompted.',
-        '2. Open Settings > Battery > Background power consumption management > Minute > High background power consumption (or Unrestricted).',
+        '2. Open Settings > Battery > Background power consumption management > Minit > High background power consumption (or Unrestricted).',
         '3. Enable Autostart / Background app launch if listed in App Info or iManager.',
-        '4. Open Recent Apps, swipe down or tap the menu on Minute, and tap Lock so the system RAM cleaner cannot kill an active recording.',
+        '4. Open Recent Apps, swipe down or tap the menu on Minit, and tap Lock so the system RAM cleaner cannot kill an active recording.',
       ];
     }
     if (brand.contains('xiaomi') ||
@@ -95,9 +95,9 @@ class PermissionsService {
         brand.contains('poco') ||
         mfg.contains('xiaomi')) {
       return const [
-        '1. Allow "No restrictions" in Battery Saver for Minute.',
-        '2. Enable Autostart under Settings > Apps > Manage apps > Minute > Autostart.',
-        '3. Lock Minute in Recent Apps during long 30+ minute recordings.',
+        '1. Allow "No restrictions" in Battery Saver for Minit.',
+        '2. Enable Autostart under Settings > Apps > Manage apps > Minit > Autostart.',
+        '3. Lock Minit in Recent Apps during long 30+ minute recordings.',
       ];
     }
     if (brand.contains('oppo') ||
@@ -106,14 +106,14 @@ class PermissionsService {
         mfg.contains('oppo')) {
       return const [
         '1. Set Battery usage to "Allow background activity" and disable optimization.',
-        '2. Enable "Allow auto-launch" under App Management > Minute.',
-        '3. Lock Minute in Recent Apps.',
+        '2. Enable "Allow auto-launch" under App Management > Minit.',
+        '3. Lock Minit in Recent Apps.',
       ];
     }
     if (brand.contains('samsung') || mfg.contains('samsung')) {
       return const [
-        '1. Set Battery to "Unrestricted" under App Info > Battery > Minute.',
-        '2. Make sure Minute is NOT in Settings > Battery > Background usage limits > Sleeping / Deep sleeping apps.',
+        '1. Set Battery to "Unrestricted" under App Info > Battery > Minit.',
+        '2. Make sure Minit is NOT in Settings > Battery > Background usage limits > Sleeping / Deep sleeping apps.',
       ];
     }
     return const [
@@ -132,7 +132,7 @@ class PermissionsService {
             context,
             title: 'Microphone permission required',
             message:
-                'Microphone access was permanently denied. Open App Settings and enable Microphone so Minute can record meetings.',
+                'Microphone access was permanently denied. Open App Settings and enable Microphone so Minit can record meetings.',
           );
         }
         return false;
@@ -143,7 +143,7 @@ class PermissionsService {
         context,
         title: 'Allow microphone access',
         message:
-            'Minute records meetings and lectures in 16 kHz mono AAC audio while the screen is locked.',
+            'Minit records meetings and lectures in 16 kHz mono AAC audio while the screen is locked.',
         confirmLabel: 'Continue',
       );
       if (!proceed) return false;
@@ -184,7 +184,7 @@ class PermissionsService {
             context,
             title: 'Allow recording notification',
             message:
-                'Minute uses a persistent foreground notification with a Stop button while recording in the background or with the screen locked.',
+                'Minit uses a persistent foreground notification with a Stop button while recording in the background or with the screen locked.',
             confirmLabel: 'Allow',
           );
           if (!proceed) return false;
@@ -222,9 +222,9 @@ class PermissionsService {
 
     final confirmed = await _showRationaleDialog(
       context,
-      title: 'Exclude Minute from battery optimization',
+      title: 'Exclude Minit from battery optimization',
       message:
-          'Long 30+ minute recordings with the screen off can be killed by battery savers unless Minute is excluded from battery optimization.',
+          'Long 30+ minute recordings with the screen off can be killed by battery savers unless Minit is excluded from battery optimization.',
       confirmLabel: 'Exclude now',
     );
     if (!confirmed) return false;

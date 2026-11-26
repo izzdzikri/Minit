@@ -35,12 +35,12 @@ class AudioEnvironmentState {
   final bool isClientSilenced;
 }
 
-/// Typed Dart interface over the shared Kotlin channel in `MinuteNativeBridge.kt`.
+/// Typed Dart interface over the shared Kotlin channel in `MinitNativeBridge.kt`.
 class NativeBridge {
   NativeBridge._();
 
-  static const MethodChannel _method = MethodChannel('com.izzdzikri.minute/native');
-  static const EventChannel _events = EventChannel('com.izzdzikri.minute/audio_events');
+  static const MethodChannel _method = MethodChannel('com.izzdzikri.minit/native');
+  static const EventChannel _events = EventChannel('com.izzdzikri.minit/audio_events');
 
   static Stream<Map<String, dynamic>>? _cachedStream;
 
@@ -94,6 +94,15 @@ class NativeBridge {
   static Future<bool> openAutoStartSettings() async {
     final opened = await _method.invokeMethod<bool>('openAutoStartSettings');
     return opened ?? false;
+  }
+
+  static Future<bool> isNetworkOnline() async {
+    try {
+      final online = await _method.invokeMethod<bool>('isNetworkOnline');
+      return online ?? true;
+    } catch (_) {
+      return true;
+    }
   }
 
   static Stream<Map<String, dynamic>> audioEventsStream() {
