@@ -94,7 +94,7 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant('auto'),
+    defaultValue: const Constant('ms'),
   );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
   @override
@@ -172,6 +172,51 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _serverMeetingIdMeta = const VerificationMeta(
+    'serverMeetingId',
+  );
+  @override
+  late final GeneratedColumn<String> serverMeetingId = GeneratedColumn<String>(
+    'server_meeting_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _glossaryMeta = const VerificationMeta(
+    'glossary',
+  );
+  @override
+  late final GeneratedColumn<String> glossary = GeneratedColumn<String>(
+    'glossary',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMessageMeta = const VerificationMeta(
+    'statusMessage',
+  );
+  @override
+  late final GeneratedColumn<String> statusMessage = GeneratedColumn<String>(
+    'status_message',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _uploadProgressMeta = const VerificationMeta(
+    'uploadProgress',
+  );
+  @override
+  late final GeneratedColumn<int> uploadProgress = GeneratedColumn<int>(
+    'upload_progress',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -210,6 +255,10 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
     isDeleted,
     markersJson,
     note,
+    serverMeetingId,
+    glossary,
+    statusMessage,
+    uploadProgress,
     createdAt,
     updatedAt,
   ];
@@ -319,6 +368,39 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
         note.isAcceptableOrUnknown(data['note']!, _noteMeta),
       );
     }
+    if (data.containsKey('server_meeting_id')) {
+      context.handle(
+        _serverMeetingIdMeta,
+        serverMeetingId.isAcceptableOrUnknown(
+          data['server_meeting_id']!,
+          _serverMeetingIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('glossary')) {
+      context.handle(
+        _glossaryMeta,
+        glossary.isAcceptableOrUnknown(data['glossary']!, _glossaryMeta),
+      );
+    }
+    if (data.containsKey('status_message')) {
+      context.handle(
+        _statusMessageMeta,
+        statusMessage.isAcceptableOrUnknown(
+          data['status_message']!,
+          _statusMessageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('upload_progress')) {
+      context.handle(
+        _uploadProgressMeta,
+        uploadProgress.isAcceptableOrUnknown(
+          data['upload_progress']!,
+          _uploadProgressMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -400,6 +482,22 @@ class $MeetingsTable extends Meetings with TableInfo<$MeetingsTable, Meeting> {
         DriftSqlType.string,
         data['${effectivePrefix}note'],
       ),
+      serverMeetingId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}server_meeting_id'],
+      ),
+      glossary: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}glossary'],
+      ),
+      statusMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status_message'],
+      ),
+      uploadProgress: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}upload_progress'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -432,6 +530,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
   final bool isDeleted;
   final String markersJson;
   final String? note;
+  final String? serverMeetingId;
+  final String? glossary;
+  final String? statusMessage;
+  final int uploadProgress;
   final DateTime createdAt;
   final DateTime updatedAt;
   const Meeting({
@@ -449,6 +551,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     required this.isDeleted,
     required this.markersJson,
     this.note,
+    this.serverMeetingId,
+    this.glossary,
+    this.statusMessage,
+    required this.uploadProgress,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -475,6 +581,16 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
     }
+    if (!nullToAbsent || serverMeetingId != null) {
+      map['server_meeting_id'] = Variable<String>(serverMeetingId);
+    }
+    if (!nullToAbsent || glossary != null) {
+      map['glossary'] = Variable<String>(glossary);
+    }
+    if (!nullToAbsent || statusMessage != null) {
+      map['status_message'] = Variable<String>(statusMessage);
+    }
+    map['upload_progress'] = Variable<int>(uploadProgress);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -500,6 +616,16 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       isDeleted: Value(isDeleted),
       markersJson: Value(markersJson),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      serverMeetingId: serverMeetingId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverMeetingId),
+      glossary: glossary == null && nullToAbsent
+          ? const Value.absent()
+          : Value(glossary),
+      statusMessage: statusMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(statusMessage),
+      uploadProgress: Value(uploadProgress),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -525,6 +651,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       isDeleted: serializer.fromJson<bool>(json['isDeleted']),
       markersJson: serializer.fromJson<String>(json['markersJson']),
       note: serializer.fromJson<String?>(json['note']),
+      serverMeetingId: serializer.fromJson<String?>(json['serverMeetingId']),
+      glossary: serializer.fromJson<String?>(json['glossary']),
+      statusMessage: serializer.fromJson<String?>(json['statusMessage']),
+      uploadProgress: serializer.fromJson<int>(json['uploadProgress']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -547,6 +677,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
       'isDeleted': serializer.toJson<bool>(isDeleted),
       'markersJson': serializer.toJson<String>(markersJson),
       'note': serializer.toJson<String?>(note),
+      'serverMeetingId': serializer.toJson<String?>(serverMeetingId),
+      'glossary': serializer.toJson<String?>(glossary),
+      'statusMessage': serializer.toJson<String?>(statusMessage),
+      'uploadProgress': serializer.toJson<int>(uploadProgress),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -567,6 +701,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     bool? isDeleted,
     String? markersJson,
     Value<String?> note = const Value.absent(),
+    Value<String?> serverMeetingId = const Value.absent(),
+    Value<String?> glossary = const Value.absent(),
+    Value<String?> statusMessage = const Value.absent(),
+    int? uploadProgress,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => Meeting(
@@ -584,6 +722,14 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     isDeleted: isDeleted ?? this.isDeleted,
     markersJson: markersJson ?? this.markersJson,
     note: note.present ? note.value : this.note,
+    serverMeetingId: serverMeetingId.present
+        ? serverMeetingId.value
+        : this.serverMeetingId,
+    glossary: glossary.present ? glossary.value : this.glossary,
+    statusMessage: statusMessage.present
+        ? statusMessage.value
+        : this.statusMessage,
+    uploadProgress: uploadProgress ?? this.uploadProgress,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -611,6 +757,16 @@ class Meeting extends DataClass implements Insertable<Meeting> {
           ? data.markersJson.value
           : this.markersJson,
       note: data.note.present ? data.note.value : this.note,
+      serverMeetingId: data.serverMeetingId.present
+          ? data.serverMeetingId.value
+          : this.serverMeetingId,
+      glossary: data.glossary.present ? data.glossary.value : this.glossary,
+      statusMessage: data.statusMessage.present
+          ? data.statusMessage.value
+          : this.statusMessage,
+      uploadProgress: data.uploadProgress.present
+          ? data.uploadProgress.value
+          : this.uploadProgress,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -633,6 +789,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
           ..write('isDeleted: $isDeleted, ')
           ..write('markersJson: $markersJson, ')
           ..write('note: $note, ')
+          ..write('serverMeetingId: $serverMeetingId, ')
+          ..write('glossary: $glossary, ')
+          ..write('statusMessage: $statusMessage, ')
+          ..write('uploadProgress: $uploadProgress, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -655,6 +815,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
     isDeleted,
     markersJson,
     note,
+    serverMeetingId,
+    glossary,
+    statusMessage,
+    uploadProgress,
     createdAt,
     updatedAt,
   );
@@ -676,6 +840,10 @@ class Meeting extends DataClass implements Insertable<Meeting> {
           other.isDeleted == this.isDeleted &&
           other.markersJson == this.markersJson &&
           other.note == this.note &&
+          other.serverMeetingId == this.serverMeetingId &&
+          other.glossary == this.glossary &&
+          other.statusMessage == this.statusMessage &&
+          other.uploadProgress == this.uploadProgress &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -695,6 +863,10 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
   final Value<bool> isDeleted;
   final Value<String> markersJson;
   final Value<String?> note;
+  final Value<String?> serverMeetingId;
+  final Value<String?> glossary;
+  final Value<String?> statusMessage;
+  final Value<int> uploadProgress;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -713,6 +885,10 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     this.isDeleted = const Value.absent(),
     this.markersJson = const Value.absent(),
     this.note = const Value.absent(),
+    this.serverMeetingId = const Value.absent(),
+    this.glossary = const Value.absent(),
+    this.statusMessage = const Value.absent(),
+    this.uploadProgress = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -732,6 +908,10 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     this.isDeleted = const Value.absent(),
     this.markersJson = const Value.absent(),
     this.note = const Value.absent(),
+    this.serverMeetingId = const Value.absent(),
+    this.glossary = const Value.absent(),
+    this.statusMessage = const Value.absent(),
+    this.uploadProgress = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -754,6 +934,10 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     Expression<bool>? isDeleted,
     Expression<String>? markersJson,
     Expression<String>? note,
+    Expression<String>? serverMeetingId,
+    Expression<String>? glossary,
+    Expression<String>? statusMessage,
+    Expression<int>? uploadProgress,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -773,6 +957,10 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
       if (isDeleted != null) 'is_deleted': isDeleted,
       if (markersJson != null) 'markers_json': markersJson,
       if (note != null) 'note': note,
+      if (serverMeetingId != null) 'server_meeting_id': serverMeetingId,
+      if (glossary != null) 'glossary': glossary,
+      if (statusMessage != null) 'status_message': statusMessage,
+      if (uploadProgress != null) 'upload_progress': uploadProgress,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -794,6 +982,10 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     Value<bool>? isDeleted,
     Value<String>? markersJson,
     Value<String?>? note,
+    Value<String?>? serverMeetingId,
+    Value<String?>? glossary,
+    Value<String?>? statusMessage,
+    Value<int>? uploadProgress,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -813,6 +1005,10 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
       isDeleted: isDeleted ?? this.isDeleted,
       markersJson: markersJson ?? this.markersJson,
       note: note ?? this.note,
+      serverMeetingId: serverMeetingId ?? this.serverMeetingId,
+      glossary: glossary ?? this.glossary,
+      statusMessage: statusMessage ?? this.statusMessage,
+      uploadProgress: uploadProgress ?? this.uploadProgress,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -864,6 +1060,18 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
+    if (serverMeetingId.present) {
+      map['server_meeting_id'] = Variable<String>(serverMeetingId.value);
+    }
+    if (glossary.present) {
+      map['glossary'] = Variable<String>(glossary.value);
+    }
+    if (statusMessage.present) {
+      map['status_message'] = Variable<String>(statusMessage.value);
+    }
+    if (uploadProgress.present) {
+      map['upload_progress'] = Variable<int>(uploadProgress.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -893,6 +1101,10 @@ class MeetingsCompanion extends UpdateCompanion<Meeting> {
           ..write('isDeleted: $isDeleted, ')
           ..write('markersJson: $markersJson, ')
           ..write('note: $note, ')
+          ..write('serverMeetingId: $serverMeetingId, ')
+          ..write('glossary: $glossary, ')
+          ..write('statusMessage: $statusMessage, ')
+          ..write('uploadProgress: $uploadProgress, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -1315,6 +1527,43 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _avgLogprobMeta = const VerificationMeta(
+    'avgLogprob',
+  );
+  @override
+  late final GeneratedColumn<double> avgLogprob = GeneratedColumn<double>(
+    'avg_logprob',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _noSpeechProbMeta = const VerificationMeta(
+    'noSpeechProb',
+  );
+  @override
+  late final GeneratedColumn<double> noSpeechProb = GeneratedColumn<double>(
+    'no_speech_prob',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isLoopFlaggedMeta = const VerificationMeta(
+    'isLoopFlagged',
+  );
+  @override
+  late final GeneratedColumn<bool> isLoopFlagged = GeneratedColumn<bool>(
+    'is_loop_flagged',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_loop_flagged" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -1325,6 +1574,9 @@ class $TranscriptSegmentsTable extends TranscriptSegments
     textContent,
     edited,
     sortOrder,
+    avgLogprob,
+    noSpeechProb,
+    isLoopFlagged,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1396,6 +1648,30 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
+    if (data.containsKey('avg_logprob')) {
+      context.handle(
+        _avgLogprobMeta,
+        avgLogprob.isAcceptableOrUnknown(data['avg_logprob']!, _avgLogprobMeta),
+      );
+    }
+    if (data.containsKey('no_speech_prob')) {
+      context.handle(
+        _noSpeechProbMeta,
+        noSpeechProb.isAcceptableOrUnknown(
+          data['no_speech_prob']!,
+          _noSpeechProbMeta,
+        ),
+      );
+    }
+    if (data.containsKey('is_loop_flagged')) {
+      context.handle(
+        _isLoopFlaggedMeta,
+        isLoopFlagged.isAcceptableOrUnknown(
+          data['is_loop_flagged']!,
+          _isLoopFlaggedMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -1437,6 +1713,18 @@ class $TranscriptSegmentsTable extends TranscriptSegments
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      avgLogprob: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}avg_logprob'],
+      ),
+      noSpeechProb: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}no_speech_prob'],
+      ),
+      isLoopFlagged: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_loop_flagged'],
+      )!,
     );
   }
 
@@ -1456,6 +1744,9 @@ class TranscriptSegment extends DataClass
   final String textContent;
   final bool edited;
   final int sortOrder;
+  final double? avgLogprob;
+  final double? noSpeechProb;
+  final bool isLoopFlagged;
   const TranscriptSegment({
     required this.id,
     required this.meetingId,
@@ -1465,6 +1756,9 @@ class TranscriptSegment extends DataClass
     required this.textContent,
     required this.edited,
     required this.sortOrder,
+    this.avgLogprob,
+    this.noSpeechProb,
+    required this.isLoopFlagged,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1479,6 +1773,13 @@ class TranscriptSegment extends DataClass
     map['text_content'] = Variable<String>(textContent);
     map['edited'] = Variable<bool>(edited);
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || avgLogprob != null) {
+      map['avg_logprob'] = Variable<double>(avgLogprob);
+    }
+    if (!nullToAbsent || noSpeechProb != null) {
+      map['no_speech_prob'] = Variable<double>(noSpeechProb);
+    }
+    map['is_loop_flagged'] = Variable<bool>(isLoopFlagged);
     return map;
   }
 
@@ -1494,6 +1795,13 @@ class TranscriptSegment extends DataClass
       textContent: Value(textContent),
       edited: Value(edited),
       sortOrder: Value(sortOrder),
+      avgLogprob: avgLogprob == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avgLogprob),
+      noSpeechProb: noSpeechProb == null && nullToAbsent
+          ? const Value.absent()
+          : Value(noSpeechProb),
+      isLoopFlagged: Value(isLoopFlagged),
     );
   }
 
@@ -1511,6 +1819,9 @@ class TranscriptSegment extends DataClass
       textContent: serializer.fromJson<String>(json['textContent']),
       edited: serializer.fromJson<bool>(json['edited']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      avgLogprob: serializer.fromJson<double?>(json['avgLogprob']),
+      noSpeechProb: serializer.fromJson<double?>(json['noSpeechProb']),
+      isLoopFlagged: serializer.fromJson<bool>(json['isLoopFlagged']),
     );
   }
   @override
@@ -1525,6 +1836,9 @@ class TranscriptSegment extends DataClass
       'textContent': serializer.toJson<String>(textContent),
       'edited': serializer.toJson<bool>(edited),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'avgLogprob': serializer.toJson<double?>(avgLogprob),
+      'noSpeechProb': serializer.toJson<double?>(noSpeechProb),
+      'isLoopFlagged': serializer.toJson<bool>(isLoopFlagged),
     };
   }
 
@@ -1537,6 +1851,9 @@ class TranscriptSegment extends DataClass
     String? textContent,
     bool? edited,
     int? sortOrder,
+    Value<double?> avgLogprob = const Value.absent(),
+    Value<double?> noSpeechProb = const Value.absent(),
+    bool? isLoopFlagged,
   }) => TranscriptSegment(
     id: id ?? this.id,
     meetingId: meetingId ?? this.meetingId,
@@ -1546,6 +1863,9 @@ class TranscriptSegment extends DataClass
     textContent: textContent ?? this.textContent,
     edited: edited ?? this.edited,
     sortOrder: sortOrder ?? this.sortOrder,
+    avgLogprob: avgLogprob.present ? avgLogprob.value : this.avgLogprob,
+    noSpeechProb: noSpeechProb.present ? noSpeechProb.value : this.noSpeechProb,
+    isLoopFlagged: isLoopFlagged ?? this.isLoopFlagged,
   );
   TranscriptSegment copyWithCompanion(TranscriptSegmentsCompanion data) {
     return TranscriptSegment(
@@ -1559,6 +1879,15 @@ class TranscriptSegment extends DataClass
           : this.textContent,
       edited: data.edited.present ? data.edited.value : this.edited,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      avgLogprob: data.avgLogprob.present
+          ? data.avgLogprob.value
+          : this.avgLogprob,
+      noSpeechProb: data.noSpeechProb.present
+          ? data.noSpeechProb.value
+          : this.noSpeechProb,
+      isLoopFlagged: data.isLoopFlagged.present
+          ? data.isLoopFlagged.value
+          : this.isLoopFlagged,
     );
   }
 
@@ -1572,7 +1901,10 @@ class TranscriptSegment extends DataClass
           ..write('endSec: $endSec, ')
           ..write('textContent: $textContent, ')
           ..write('edited: $edited, ')
-          ..write('sortOrder: $sortOrder')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('avgLogprob: $avgLogprob, ')
+          ..write('noSpeechProb: $noSpeechProb, ')
+          ..write('isLoopFlagged: $isLoopFlagged')
           ..write(')'))
         .toString();
   }
@@ -1587,6 +1919,9 @@ class TranscriptSegment extends DataClass
     textContent,
     edited,
     sortOrder,
+    avgLogprob,
+    noSpeechProb,
+    isLoopFlagged,
   );
   @override
   bool operator ==(Object other) =>
@@ -1599,7 +1934,10 @@ class TranscriptSegment extends DataClass
           other.endSec == this.endSec &&
           other.textContent == this.textContent &&
           other.edited == this.edited &&
-          other.sortOrder == this.sortOrder);
+          other.sortOrder == this.sortOrder &&
+          other.avgLogprob == this.avgLogprob &&
+          other.noSpeechProb == this.noSpeechProb &&
+          other.isLoopFlagged == this.isLoopFlagged);
 }
 
 class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
@@ -1611,6 +1949,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
   final Value<String> textContent;
   final Value<bool> edited;
   final Value<int> sortOrder;
+  final Value<double?> avgLogprob;
+  final Value<double?> noSpeechProb;
+  final Value<bool> isLoopFlagged;
   final Value<int> rowid;
   const TranscriptSegmentsCompanion({
     this.id = const Value.absent(),
@@ -1621,6 +1962,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     this.textContent = const Value.absent(),
     this.edited = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.avgLogprob = const Value.absent(),
+    this.noSpeechProb = const Value.absent(),
+    this.isLoopFlagged = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TranscriptSegmentsCompanion.insert({
@@ -1632,6 +1976,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     required String textContent,
     this.edited = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.avgLogprob = const Value.absent(),
+    this.noSpeechProb = const Value.absent(),
+    this.isLoopFlagged = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        meetingId = Value(meetingId),
@@ -1647,6 +1994,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Expression<String>? textContent,
     Expression<bool>? edited,
     Expression<int>? sortOrder,
+    Expression<double>? avgLogprob,
+    Expression<double>? noSpeechProb,
+    Expression<bool>? isLoopFlagged,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1658,6 +2008,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       if (textContent != null) 'text_content': textContent,
       if (edited != null) 'edited': edited,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (avgLogprob != null) 'avg_logprob': avgLogprob,
+      if (noSpeechProb != null) 'no_speech_prob': noSpeechProb,
+      if (isLoopFlagged != null) 'is_loop_flagged': isLoopFlagged,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1671,6 +2024,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     Value<String>? textContent,
     Value<bool>? edited,
     Value<int>? sortOrder,
+    Value<double?>? avgLogprob,
+    Value<double?>? noSpeechProb,
+    Value<bool>? isLoopFlagged,
     Value<int>? rowid,
   }) {
     return TranscriptSegmentsCompanion(
@@ -1682,6 +2038,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
       textContent: textContent ?? this.textContent,
       edited: edited ?? this.edited,
       sortOrder: sortOrder ?? this.sortOrder,
+      avgLogprob: avgLogprob ?? this.avgLogprob,
+      noSpeechProb: noSpeechProb ?? this.noSpeechProb,
+      isLoopFlagged: isLoopFlagged ?? this.isLoopFlagged,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1713,6 +2072,15 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (avgLogprob.present) {
+      map['avg_logprob'] = Variable<double>(avgLogprob.value);
+    }
+    if (noSpeechProb.present) {
+      map['no_speech_prob'] = Variable<double>(noSpeechProb.value);
+    }
+    if (isLoopFlagged.present) {
+      map['is_loop_flagged'] = Variable<bool>(isLoopFlagged.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1730,6 +2098,9 @@ class TranscriptSegmentsCompanion extends UpdateCompanion<TranscriptSegment> {
           ..write('textContent: $textContent, ')
           ..write('edited: $edited, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('avgLogprob: $avgLogprob, ')
+          ..write('noSpeechProb: $noSpeechProb, ')
+          ..write('isLoopFlagged: $isLoopFlagged, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3087,6 +3458,570 @@ class MeetingTagsCompanion extends UpdateCompanion<MeetingTag> {
   }
 }
 
+class $UploadQueueTable extends UploadQueue
+    with TableInfo<$UploadQueueTable, UploadQueueEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $UploadQueueTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _meetingIdMeta = const VerificationMeta(
+    'meetingId',
+  );
+  @override
+  late final GeneratedColumn<String> meetingId = GeneratedColumn<String>(
+    'meeting_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'UNIQUE REFERENCES meetings (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _filePathMeta = const VerificationMeta(
+    'filePath',
+  );
+  @override
+  late final GeneratedColumn<String> filePath = GeneratedColumn<String>(
+    'file_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _totalBytesMeta = const VerificationMeta(
+    'totalBytes',
+  );
+  @override
+  late final GeneratedColumn<int> totalBytes = GeneratedColumn<int>(
+    'total_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _uploadedBytesMeta = const VerificationMeta(
+    'uploadedBytes',
+  );
+  @override
+  late final GeneratedColumn<int> uploadedBytes = GeneratedColumn<int>(
+    'uploaded_bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('pending'),
+  );
+  static const VerificationMeta _lastErrorMeta = const VerificationMeta(
+    'lastError',
+  );
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+    'last_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _attemptsMeta = const VerificationMeta(
+    'attempts',
+  );
+  @override
+  late final GeneratedColumn<int> attempts = GeneratedColumn<int>(
+    'attempts',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    meetingId,
+    filePath,
+    totalBytes,
+    uploadedBytes,
+    status,
+    lastError,
+    attempts,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'upload_queue';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<UploadQueueEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('meeting_id')) {
+      context.handle(
+        _meetingIdMeta,
+        meetingId.isAcceptableOrUnknown(data['meeting_id']!, _meetingIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_meetingIdMeta);
+    }
+    if (data.containsKey('file_path')) {
+      context.handle(
+        _filePathMeta,
+        filePath.isAcceptableOrUnknown(data['file_path']!, _filePathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_filePathMeta);
+    }
+    if (data.containsKey('total_bytes')) {
+      context.handle(
+        _totalBytesMeta,
+        totalBytes.isAcceptableOrUnknown(data['total_bytes']!, _totalBytesMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_totalBytesMeta);
+    }
+    if (data.containsKey('uploaded_bytes')) {
+      context.handle(
+        _uploadedBytesMeta,
+        uploadedBytes.isAcceptableOrUnknown(
+          data['uploaded_bytes']!,
+          _uploadedBytesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(
+        _lastErrorMeta,
+        lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta),
+      );
+    }
+    if (data.containsKey('attempts')) {
+      context.handle(
+        _attemptsMeta,
+        attempts.isAcceptableOrUnknown(data['attempts']!, _attemptsMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  UploadQueueEntry map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return UploadQueueEntry(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      meetingId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}meeting_id'],
+      )!,
+      filePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}file_path'],
+      )!,
+      totalBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_bytes'],
+      )!,
+      uploadedBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}uploaded_bytes'],
+      )!,
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      lastError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error'],
+      ),
+      attempts: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}attempts'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $UploadQueueTable createAlias(String alias) {
+    return $UploadQueueTable(attachedDatabase, alias);
+  }
+}
+
+class UploadQueueEntry extends DataClass
+    implements Insertable<UploadQueueEntry> {
+  final String id;
+  final String meetingId;
+  final String filePath;
+  final int totalBytes;
+  final int uploadedBytes;
+  final String status;
+  final String? lastError;
+  final int attempts;
+  final DateTime updatedAt;
+  const UploadQueueEntry({
+    required this.id,
+    required this.meetingId,
+    required this.filePath,
+    required this.totalBytes,
+    required this.uploadedBytes,
+    required this.status,
+    this.lastError,
+    required this.attempts,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['meeting_id'] = Variable<String>(meetingId);
+    map['file_path'] = Variable<String>(filePath);
+    map['total_bytes'] = Variable<int>(totalBytes);
+    map['uploaded_bytes'] = Variable<int>(uploadedBytes);
+    map['status'] = Variable<String>(status);
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    map['attempts'] = Variable<int>(attempts);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  UploadQueueCompanion toCompanion(bool nullToAbsent) {
+    return UploadQueueCompanion(
+      id: Value(id),
+      meetingId: Value(meetingId),
+      filePath: Value(filePath),
+      totalBytes: Value(totalBytes),
+      uploadedBytes: Value(uploadedBytes),
+      status: Value(status),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      attempts: Value(attempts),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory UploadQueueEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return UploadQueueEntry(
+      id: serializer.fromJson<String>(json['id']),
+      meetingId: serializer.fromJson<String>(json['meetingId']),
+      filePath: serializer.fromJson<String>(json['filePath']),
+      totalBytes: serializer.fromJson<int>(json['totalBytes']),
+      uploadedBytes: serializer.fromJson<int>(json['uploadedBytes']),
+      status: serializer.fromJson<String>(json['status']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      attempts: serializer.fromJson<int>(json['attempts']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'meetingId': serializer.toJson<String>(meetingId),
+      'filePath': serializer.toJson<String>(filePath),
+      'totalBytes': serializer.toJson<int>(totalBytes),
+      'uploadedBytes': serializer.toJson<int>(uploadedBytes),
+      'status': serializer.toJson<String>(status),
+      'lastError': serializer.toJson<String?>(lastError),
+      'attempts': serializer.toJson<int>(attempts),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  UploadQueueEntry copyWith({
+    String? id,
+    String? meetingId,
+    String? filePath,
+    int? totalBytes,
+    int? uploadedBytes,
+    String? status,
+    Value<String?> lastError = const Value.absent(),
+    int? attempts,
+    DateTime? updatedAt,
+  }) => UploadQueueEntry(
+    id: id ?? this.id,
+    meetingId: meetingId ?? this.meetingId,
+    filePath: filePath ?? this.filePath,
+    totalBytes: totalBytes ?? this.totalBytes,
+    uploadedBytes: uploadedBytes ?? this.uploadedBytes,
+    status: status ?? this.status,
+    lastError: lastError.present ? lastError.value : this.lastError,
+    attempts: attempts ?? this.attempts,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  UploadQueueEntry copyWithCompanion(UploadQueueCompanion data) {
+    return UploadQueueEntry(
+      id: data.id.present ? data.id.value : this.id,
+      meetingId: data.meetingId.present ? data.meetingId.value : this.meetingId,
+      filePath: data.filePath.present ? data.filePath.value : this.filePath,
+      totalBytes: data.totalBytes.present
+          ? data.totalBytes.value
+          : this.totalBytes,
+      uploadedBytes: data.uploadedBytes.present
+          ? data.uploadedBytes.value
+          : this.uploadedBytes,
+      status: data.status.present ? data.status.value : this.status,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      attempts: data.attempts.present ? data.attempts.value : this.attempts,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UploadQueueEntry(')
+          ..write('id: $id, ')
+          ..write('meetingId: $meetingId, ')
+          ..write('filePath: $filePath, ')
+          ..write('totalBytes: $totalBytes, ')
+          ..write('uploadedBytes: $uploadedBytes, ')
+          ..write('status: $status, ')
+          ..write('lastError: $lastError, ')
+          ..write('attempts: $attempts, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    meetingId,
+    filePath,
+    totalBytes,
+    uploadedBytes,
+    status,
+    lastError,
+    attempts,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is UploadQueueEntry &&
+          other.id == this.id &&
+          other.meetingId == this.meetingId &&
+          other.filePath == this.filePath &&
+          other.totalBytes == this.totalBytes &&
+          other.uploadedBytes == this.uploadedBytes &&
+          other.status == this.status &&
+          other.lastError == this.lastError &&
+          other.attempts == this.attempts &&
+          other.updatedAt == this.updatedAt);
+}
+
+class UploadQueueCompanion extends UpdateCompanion<UploadQueueEntry> {
+  final Value<String> id;
+  final Value<String> meetingId;
+  final Value<String> filePath;
+  final Value<int> totalBytes;
+  final Value<int> uploadedBytes;
+  final Value<String> status;
+  final Value<String?> lastError;
+  final Value<int> attempts;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const UploadQueueCompanion({
+    this.id = const Value.absent(),
+    this.meetingId = const Value.absent(),
+    this.filePath = const Value.absent(),
+    this.totalBytes = const Value.absent(),
+    this.uploadedBytes = const Value.absent(),
+    this.status = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.attempts = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  UploadQueueCompanion.insert({
+    required String id,
+    required String meetingId,
+    required String filePath,
+    required int totalBytes,
+    this.uploadedBytes = const Value.absent(),
+    this.status = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.attempts = const Value.absent(),
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       meetingId = Value(meetingId),
+       filePath = Value(filePath),
+       totalBytes = Value(totalBytes),
+       updatedAt = Value(updatedAt);
+  static Insertable<UploadQueueEntry> custom({
+    Expression<String>? id,
+    Expression<String>? meetingId,
+    Expression<String>? filePath,
+    Expression<int>? totalBytes,
+    Expression<int>? uploadedBytes,
+    Expression<String>? status,
+    Expression<String>? lastError,
+    Expression<int>? attempts,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (meetingId != null) 'meeting_id': meetingId,
+      if (filePath != null) 'file_path': filePath,
+      if (totalBytes != null) 'total_bytes': totalBytes,
+      if (uploadedBytes != null) 'uploaded_bytes': uploadedBytes,
+      if (status != null) 'status': status,
+      if (lastError != null) 'last_error': lastError,
+      if (attempts != null) 'attempts': attempts,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  UploadQueueCompanion copyWith({
+    Value<String>? id,
+    Value<String>? meetingId,
+    Value<String>? filePath,
+    Value<int>? totalBytes,
+    Value<int>? uploadedBytes,
+    Value<String>? status,
+    Value<String?>? lastError,
+    Value<int>? attempts,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return UploadQueueCompanion(
+      id: id ?? this.id,
+      meetingId: meetingId ?? this.meetingId,
+      filePath: filePath ?? this.filePath,
+      totalBytes: totalBytes ?? this.totalBytes,
+      uploadedBytes: uploadedBytes ?? this.uploadedBytes,
+      status: status ?? this.status,
+      lastError: lastError ?? this.lastError,
+      attempts: attempts ?? this.attempts,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (meetingId.present) {
+      map['meeting_id'] = Variable<String>(meetingId.value);
+    }
+    if (filePath.present) {
+      map['file_path'] = Variable<String>(filePath.value);
+    }
+    if (totalBytes.present) {
+      map['total_bytes'] = Variable<int>(totalBytes.value);
+    }
+    if (uploadedBytes.present) {
+      map['uploaded_bytes'] = Variable<int>(uploadedBytes.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (attempts.present) {
+      map['attempts'] = Variable<int>(attempts.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UploadQueueCompanion(')
+          ..write('id: $id, ')
+          ..write('meetingId: $meetingId, ')
+          ..write('filePath: $filePath, ')
+          ..write('totalBytes: $totalBytes, ')
+          ..write('uploadedBytes: $uploadedBytes, ')
+          ..write('status: $status, ')
+          ..write('lastError: $lastError, ')
+          ..write('attempts: $attempts, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3098,6 +4033,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ActionItemsTable actionItems = $ActionItemsTable(this);
   late final $TagsTable tags = $TagsTable(this);
   late final $MeetingTagsTable meetingTags = $MeetingTagsTable(this);
+  late final $UploadQueueTable uploadQueue = $UploadQueueTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3110,6 +4046,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     actionItems,
     tags,
     meetingTags,
+    uploadQueue,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -3162,6 +4099,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       ),
       result: [TableUpdate('meeting_tags', kind: UpdateKind.delete)],
     ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'meetings',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('upload_queue', kind: UpdateKind.delete)],
+    ),
   ]);
 }
 
@@ -3180,6 +4124,10 @@ typedef $$MeetingsTableCreateCompanionBuilder = MeetingsCompanion Function({
   Value<bool> isDeleted,
   Value<String> markersJson,
   Value<String?> note,
+  Value<String?> serverMeetingId,
+  Value<String?> glossary,
+  Value<String?> statusMessage,
+  Value<int> uploadProgress,
   required DateTime createdAt,
   required DateTime updatedAt,
   Value<int> rowid,
@@ -3199,6 +4147,10 @@ typedef $$MeetingsTableUpdateCompanionBuilder = MeetingsCompanion Function({
   Value<bool> isDeleted,
   Value<String> markersJson,
   Value<String?> note,
+  Value<String?> serverMeetingId,
+  Value<String?> glossary,
+  Value<String?> statusMessage,
+  Value<int> uploadProgress,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
   Value<int> rowid,
@@ -3301,6 +4253,24 @@ final class $$MeetingsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
+
+  static MultiTypedResultKey<$UploadQueueTable, List<UploadQueueEntry>>
+  _uploadQueueRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.uploadQueue,
+    aliasName: 'meetings__id__upload_queue__meeting_id',
+  );
+
+  $$UploadQueueTableProcessedTableManager get uploadQueueRefs {
+    final manager = $$UploadQueueTableTableManager(
+      $_db,
+      $_db.uploadQueue,
+    ).filter((f) => f.meetingId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_uploadQueueRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
 }
 
 class $$MeetingsTableFilterComposer
@@ -3379,6 +4349,26 @@ class $$MeetingsTableFilterComposer
 
   ColumnFilters<String> get note => $composableBuilder(
     column: $table.note,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get serverMeetingId => $composableBuilder(
+    column: $table.serverMeetingId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get glossary => $composableBuilder(
+    column: $table.glossary,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get uploadProgress => $composableBuilder(
+    column: $table.uploadProgress,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3516,6 +4506,31 @@ class $$MeetingsTableFilterComposer
     );
     return f(composer);
   }
+
+  Expression<bool> uploadQueueRefs(
+    Expression<bool> Function($$UploadQueueTableFilterComposer f) f,
+  ) {
+    final $$UploadQueueTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.uploadQueue,
+      getReferencedColumn: (t) => t.meetingId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UploadQueueTableFilterComposer(
+            $db: $db,
+            $table: $db.uploadQueue,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MeetingsTableOrderingComposer
@@ -3597,6 +4612,26 @@ class $$MeetingsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get serverMeetingId => $composableBuilder(
+    column: $table.serverMeetingId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get glossary => $composableBuilder(
+    column: $table.glossary,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get uploadProgress => $composableBuilder(
+    column: $table.uploadProgress,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -3666,6 +4701,24 @@ class $$MeetingsTableAnnotationComposer
 
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
+
+  GeneratedColumn<String> get serverMeetingId => $composableBuilder(
+    column: $table.serverMeetingId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get glossary =>
+      $composableBuilder(column: $table.glossary, builder: (column) => column);
+
+  GeneratedColumn<String> get statusMessage => $composableBuilder(
+    column: $table.statusMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get uploadProgress => $composableBuilder(
+    column: $table.uploadProgress,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -3798,6 +4851,31 @@ class $$MeetingsTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> uploadQueueRefs<T extends Object>(
+    Expression<T> Function($$UploadQueueTableAnnotationComposer a) f,
+  ) {
+    final $$UploadQueueTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.uploadQueue,
+      getReferencedColumn: (t) => t.meetingId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$UploadQueueTableAnnotationComposer(
+            $db: $db,
+            $table: $db.uploadQueue,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MeetingsTableTableManager
@@ -3819,6 +4897,7 @@ class $$MeetingsTableTableManager
             bool summariesRefs,
             bool actionItemsRefs,
             bool meetingTagsRefs,
+            bool uploadQueueRefs,
           })
         > {
   $$MeetingsTableTableManager(_$AppDatabase db, $MeetingsTable table)
@@ -3848,6 +4927,10 @@ class $$MeetingsTableTableManager
                 Value<bool> isDeleted = const Value.absent(),
                 Value<String> markersJson = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<String?> serverMeetingId = const Value.absent(),
+                Value<String?> glossary = const Value.absent(),
+                Value<String?> statusMessage = const Value.absent(),
+                Value<int> uploadProgress = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -3866,6 +4949,10 @@ class $$MeetingsTableTableManager
                 isDeleted: isDeleted,
                 markersJson: markersJson,
                 note: note,
+                serverMeetingId: serverMeetingId,
+                glossary: glossary,
+                statusMessage: statusMessage,
+                uploadProgress: uploadProgress,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -3886,6 +4973,10 @@ class $$MeetingsTableTableManager
                 Value<bool> isDeleted = const Value.absent(),
                 Value<String> markersJson = const Value.absent(),
                 Value<String?> note = const Value.absent(),
+                Value<String?> serverMeetingId = const Value.absent(),
+                Value<String?> glossary = const Value.absent(),
+                Value<String?> statusMessage = const Value.absent(),
+                Value<int> uploadProgress = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
@@ -3904,6 +4995,10 @@ class $$MeetingsTableTableManager
                 isDeleted: isDeleted,
                 markersJson: markersJson,
                 note: note,
+                serverMeetingId: serverMeetingId,
+                glossary: glossary,
+                statusMessage: statusMessage,
+                uploadProgress: uploadProgress,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -3923,6 +5018,7 @@ class $$MeetingsTableTableManager
                 summariesRefs = false,
                 actionItemsRefs = false,
                 meetingTagsRefs = false,
+                uploadQueueRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
@@ -3932,6 +5028,7 @@ class $$MeetingsTableTableManager
                     if (summariesRefs) db.summaries,
                     if (actionItemsRefs) db.actionItems,
                     if (meetingTagsRefs) db.meetingTags,
+                    if (uploadQueueRefs) db.uploadQueue,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -4036,6 +5133,26 @@ class $$MeetingsTableTableManager
                           referencedColumn: 'meeting_id',
                           typedResults: items,
                         ),
+                      if (uploadQueueRefs)
+                        await $_getPrefetchedDataByColumns<
+                          Meeting,
+                          $MeetingsTable,
+                          UploadQueueEntry,
+                          $UploadQueueTable
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MeetingsTableReferences
+                              ._uploadQueueRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MeetingsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).uploadQueueRefs,
+                          currentColumn: 'id',
+                          referencedColumn: 'meeting_id',
+                          typedResults: items,
+                        ),
                     ];
                   },
                 );
@@ -4062,6 +5179,7 @@ typedef $$MeetingsTableProcessedTableManager =
         bool summariesRefs,
         bool actionItemsRefs,
         bool meetingTagsRefs,
+        bool uploadQueueRefs,
       })
     >;
 typedef $$SpeakersTableCreateCompanionBuilder = SpeakersCompanion Function({
@@ -4466,6 +5584,9 @@ typedef $$TranscriptSegmentsTableCreateCompanionBuilder =
       required String textContent,
       Value<bool> edited,
       Value<int> sortOrder,
+      Value<double?> avgLogprob,
+      Value<double?> noSpeechProb,
+      Value<bool> isLoopFlagged,
       Value<int> rowid,
     });
 typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
@@ -4478,6 +5599,9 @@ typedef $$TranscriptSegmentsTableUpdateCompanionBuilder =
       Value<String> textContent,
       Value<bool> edited,
       Value<int> sortOrder,
+      Value<double?> avgLogprob,
+      Value<double?> noSpeechProb,
+      Value<bool> isLoopFlagged,
       Value<int> rowid,
     });
 
@@ -4568,6 +5692,21 @@ class $$TranscriptSegmentsTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<double> get avgLogprob => $composableBuilder(
+    column: $table.avgLogprob,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get noSpeechProb => $composableBuilder(
+    column: $table.noSpeechProb,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isLoopFlagged => $composableBuilder(
+    column: $table.isLoopFlagged,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$MeetingsTableFilterComposer get meetingId {
     final $$MeetingsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -4654,6 +5793,21 @@ class $$TranscriptSegmentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get avgLogprob => $composableBuilder(
+    column: $table.avgLogprob,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get noSpeechProb => $composableBuilder(
+    column: $table.noSpeechProb,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isLoopFlagged => $composableBuilder(
+    column: $table.isLoopFlagged,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$MeetingsTableOrderingComposer get meetingId {
     final $$MeetingsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -4729,6 +5883,21 @@ class $$TranscriptSegmentsTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<double> get avgLogprob => $composableBuilder(
+    column: $table.avgLogprob,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get noSpeechProb => $composableBuilder(
+    column: $table.noSpeechProb,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get isLoopFlagged => $composableBuilder(
+    column: $table.isLoopFlagged,
+    builder: (column) => column,
+  );
 
   $$MeetingsTableAnnotationComposer get meetingId {
     final $$MeetingsTableAnnotationComposer composer = $composerBuilder(
@@ -4818,6 +5987,9 @@ class $$TranscriptSegmentsTableTableManager
                 Value<String> textContent = const Value.absent(),
                 Value<bool> edited = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<double?> avgLogprob = const Value.absent(),
+                Value<double?> noSpeechProb = const Value.absent(),
+                Value<bool> isLoopFlagged = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TranscriptSegmentsCompanion(
                 id: id,
@@ -4828,6 +6000,9 @@ class $$TranscriptSegmentsTableTableManager
                 textContent: textContent,
                 edited: edited,
                 sortOrder: sortOrder,
+                avgLogprob: avgLogprob,
+                noSpeechProb: noSpeechProb,
+                isLoopFlagged: isLoopFlagged,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -4840,6 +6015,9 @@ class $$TranscriptSegmentsTableTableManager
                 required String textContent,
                 Value<bool> edited = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<double?> avgLogprob = const Value.absent(),
+                Value<double?> noSpeechProb = const Value.absent(),
+                Value<bool> isLoopFlagged = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => TranscriptSegmentsCompanion.insert(
                 id: id,
@@ -4850,6 +6028,9 @@ class $$TranscriptSegmentsTableTableManager
                 textContent: textContent,
                 edited: edited,
                 sortOrder: sortOrder,
+                avgLogprob: avgLogprob,
+                noSpeechProb: noSpeechProb,
+                isLoopFlagged: isLoopFlagged,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -6209,6 +7390,401 @@ typedef $$MeetingTagsTableProcessedTableManager =
       MeetingTag,
       PrefetchHooks Function({bool meetingId, bool tagId})
     >;
+typedef $$UploadQueueTableCreateCompanionBuilder =
+    UploadQueueCompanion Function({
+      required String id,
+      required String meetingId,
+      required String filePath,
+      required int totalBytes,
+      Value<int> uploadedBytes,
+      Value<String> status,
+      Value<String?> lastError,
+      Value<int> attempts,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$UploadQueueTableUpdateCompanionBuilder =
+    UploadQueueCompanion Function({
+      Value<String> id,
+      Value<String> meetingId,
+      Value<String> filePath,
+      Value<int> totalBytes,
+      Value<int> uploadedBytes,
+      Value<String> status,
+      Value<String?> lastError,
+      Value<int> attempts,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+final class $$UploadQueueTableReferences
+    extends BaseReferences<_$AppDatabase, $UploadQueueTable, UploadQueueEntry> {
+  $$UploadQueueTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $MeetingsTable _meetingIdTable(_$AppDatabase db) =>
+      db.meetings.createAlias('upload_queue__meeting_id__meetings__id');
+
+  $$MeetingsTableProcessedTableManager get meetingId {
+    final $_column = $_itemColumn<String>('meeting_id')!;
+
+    final manager = $$MeetingsTableTableManager(
+      $_db,
+      $_db.meetings,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_meetingIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$UploadQueueTableFilterComposer
+    extends Composer<_$AppDatabase, $UploadQueueTable> {
+  $$UploadQueueTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get filePath => $composableBuilder(
+    column: $table.filePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalBytes => $composableBuilder(
+    column: $table.totalBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get uploadedBytes => $composableBuilder(
+    column: $table.uploadedBytes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MeetingsTableFilterComposer get meetingId {
+    final $$MeetingsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.meetingId,
+      referencedTable: $db.meetings,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MeetingsTableFilterComposer(
+            $db: $db,
+            $table: $db.meetings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$UploadQueueTableOrderingComposer
+    extends Composer<_$AppDatabase, $UploadQueueTable> {
+  $$UploadQueueTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get filePath => $composableBuilder(
+    column: $table.filePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalBytes => $composableBuilder(
+    column: $table.totalBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get uploadedBytes => $composableBuilder(
+    column: $table.uploadedBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get attempts => $composableBuilder(
+    column: $table.attempts,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MeetingsTableOrderingComposer get meetingId {
+    final $$MeetingsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.meetingId,
+      referencedTable: $db.meetings,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MeetingsTableOrderingComposer(
+            $db: $db,
+            $table: $db.meetings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$UploadQueueTableAnnotationComposer
+    extends Composer<_$AppDatabase, $UploadQueueTable> {
+  $$UploadQueueTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get filePath =>
+      $composableBuilder(column: $table.filePath, builder: (column) => column);
+
+  GeneratedColumn<int> get totalBytes => $composableBuilder(
+    column: $table.totalBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get uploadedBytes => $composableBuilder(
+    column: $table.uploadedBytes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<int> get attempts =>
+      $composableBuilder(column: $table.attempts, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$MeetingsTableAnnotationComposer get meetingId {
+    final $$MeetingsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.meetingId,
+      referencedTable: $db.meetings,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MeetingsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.meetings,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$UploadQueueTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $UploadQueueTable,
+          UploadQueueEntry,
+          $$UploadQueueTableFilterComposer,
+          $$UploadQueueTableOrderingComposer,
+          $$UploadQueueTableAnnotationComposer,
+          $$UploadQueueTableCreateCompanionBuilder,
+          $$UploadQueueTableUpdateCompanionBuilder,
+          (UploadQueueEntry, $$UploadQueueTableReferences),
+          UploadQueueEntry,
+          PrefetchHooks Function({bool meetingId})
+        > {
+  $$UploadQueueTableTableManager(_$AppDatabase db, $UploadQueueTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$UploadQueueTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$UploadQueueTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$UploadQueueTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> meetingId = const Value.absent(),
+                Value<String> filePath = const Value.absent(),
+                Value<int> totalBytes = const Value.absent(),
+                Value<int> uploadedBytes = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => UploadQueueCompanion(
+                id: id,
+                meetingId: meetingId,
+                filePath: filePath,
+                totalBytes: totalBytes,
+                uploadedBytes: uploadedBytes,
+                status: status,
+                lastError: lastError,
+                attempts: attempts,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String meetingId,
+                required String filePath,
+                required int totalBytes,
+                Value<int> uploadedBytes = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<int> attempts = const Value.absent(),
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => UploadQueueCompanion.insert(
+                id: id,
+                meetingId: meetingId,
+                filePath: filePath,
+                totalBytes: totalBytes,
+                uploadedBytes: uploadedBytes,
+                status: status,
+                lastError: lastError,
+                attempts: attempts,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$UploadQueueTable, UploadQueueEntry>(table),
+                  $$UploadQueueTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({meetingId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (meetingId) {
+                      state = state.withJoin(
+                        currentTable: table,
+                        currentColumn: table.meetingId,
+                        referencedTable: $$UploadQueueTableReferences
+                            ._meetingIdTable(db),
+                        referencedColumn: $$UploadQueueTableReferences
+                            ._meetingIdTable(db)
+                            .id,
+                      ) as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$UploadQueueTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $UploadQueueTable,
+      UploadQueueEntry,
+      $$UploadQueueTableFilterComposer,
+      $$UploadQueueTableOrderingComposer,
+      $$UploadQueueTableAnnotationComposer,
+      $$UploadQueueTableCreateCompanionBuilder,
+      $$UploadQueueTableUpdateCompanionBuilder,
+      (UploadQueueEntry, $$UploadQueueTableReferences),
+      UploadQueueEntry,
+      PrefetchHooks Function({bool meetingId})
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6226,4 +7802,6 @@ class $AppDatabaseManager {
   $$TagsTableTableManager get tags => $$TagsTableTableManager(_db, _db.tags);
   $$MeetingTagsTableTableManager get meetingTags =>
       $$MeetingTagsTableTableManager(_db, _db.meetingTags);
+  $$UploadQueueTableTableManager get uploadQueue =>
+      $$UploadQueueTableTableManager(_db, _db.uploadQueue);
 }

@@ -157,7 +157,7 @@ class RecordingTaskHandler extends TaskHandler {
         encoder: AudioEncoder.aacLc,
         sampleRate: 16000,
         numChannels: 1,
-        bitRate: 32000,
+        bitRate: 48000,
         audioInterruption: ignoreMediaFocus
             ? AudioInterruptionMode.none
             : AudioInterruptionMode.pause,

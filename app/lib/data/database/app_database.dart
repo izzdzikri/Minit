@@ -15,13 +15,17 @@ class Meetings extends Table {
   IntColumn get durationMs => integer().withDefault(const Constant(0))();
   IntColumn get sizeBytes => integer().withDefault(const Constant(0))();
   IntColumn get segmentCount => integer().withDefault(const Constant(1))();
-  TextColumn get language => text().withDefault(const Constant('auto'))();
+  TextColumn get language => text().withDefault(const Constant('ms'))();
   TextColumn get status => text().withDefault(const Constant('Recorded'))();
   BoolColumn get isPartial => boolean().withDefault(const Constant(false))();
   BoolColumn get isForceMode => boolean().withDefault(const Constant(false))();
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
   TextColumn get markersJson => text().withDefault(const Constant('[]'))();
   TextColumn get note => text().nullable()();
+  TextColumn get serverMeetingId => text().nullable()();
+  TextColumn get glossary => text().nullable()();
+  TextColumn get statusMessage => text().nullable()();
+  IntColumn get uploadProgress => integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
@@ -52,6 +56,10 @@ class TranscriptSegments extends Table {
   TextColumn get textContent => text()();
   BoolColumn get edited => boolean().withDefault(const Constant(false))();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  RealColumn get avgLogprob => real().nullable()();
+  RealColumn get noSpeechProb => real().nullable()();
+  BoolColumn get isLoopFlagged =>
+      boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -104,18 +112,38 @@ class MeetingTags extends Table {
   Set<Column> get primaryKey => {meetingId, tagId};
 }
 
+@DataClassName('UploadQueueEntry')
+class UploadQueue extends Table {
+  TextColumn get id => text()();
+  TextColumn get meetingId => text()
+      .unique()
+      .references(Meetings, #id, onDelete: KeyAction.cascade)();
+  TextColumn get filePath => text()();
+  IntColumn get totalBytes => integer()();
+  IntColumn get uploadedBytes => integer().withDefault(const Constant(0))();
+  TextColumn get status => text().withDefault(const Constant('pending'))();
+  TextColumn get lastError => text().nullable()();
+  IntColumn get attempts => integer().withDefault(const Constant(0))();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 class MeetingListItem {
   const MeetingListItem({
     required this.meeting,
     required this.tags,
     required this.summarySnippet,
     required this.markers,
+    this.uploadEntry,
   });
 
   final Meeting meeting;
   final List<Tag> tags;
   final String? summarySnippet;
   final List<TimelineMarker> markers;
+  final UploadQueueEntry? uploadEntry;
 }
 
 class TranscriptSegmentWithSpeaker {
@@ -151,6 +179,7 @@ class MeetingDetailData {
     required this.actionItems,
     required this.tags,
     required this.markers,
+    this.uploadEntry,
   });
 
   final Meeting meeting;
@@ -160,6 +189,7 @@ class MeetingDetailData {
   final List<ActionItem> actionItems;
   final List<Tag> tags;
   final List<TimelineMarker> markers;
+  final UploadQueueEntry? uploadEntry;
 }
 
 class SearchHit {
@@ -178,6 +208,28 @@ class SearchHit {
   final String? speakerName;
 }
 
+class TranscriptSegmentDraft {
+  const TranscriptSegmentDraft({
+    required this.id,
+    required this.speakerLabel,
+    required this.startSec,
+    required this.endSec,
+    required this.textContent,
+    this.avgLogprob,
+    this.noSpeechProb,
+    this.isLoopFlagged = false,
+  });
+
+  final String id;
+  final String speakerLabel;
+  final double startSec;
+  final double endSec;
+  final String textContent;
+  final double? avgLogprob;
+  final double? noSpeechProb;
+  final bool isLoopFlagged;
+}
+
 @DriftDatabase(
   tables: [
     Meetings,
@@ -187,6 +239,7 @@ class SearchHit {
     ActionItems,
     Tags,
     MeetingTags,
+    UploadQueue,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -194,10 +247,31 @@ class AppDatabase extends _$AppDatabase {
       : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (migrator, from, to) async {
+          if (from < 2) {
+            await migrator.addColumn(meetings, meetings.serverMeetingId);
+            await migrator.addColumn(meetings, meetings.glossary);
+            await migrator.addColumn(meetings, meetings.statusMessage);
+            await migrator.addColumn(meetings, meetings.uploadProgress);
+            await migrator.addColumn(
+              transcriptSegments,
+              transcriptSegments.avgLogprob,
+            );
+            await migrator.addColumn(
+              transcriptSegments,
+              transcriptSegments.noSpeechProb,
+            );
+            await migrator.addColumn(
+              transcriptSegments,
+              transcriptSegments.isLoopFlagged,
+            );
+            await migrator.createTable(uploadQueue);
+          }
+        },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
         },
@@ -244,6 +318,10 @@ class AppDatabase extends _$AppDatabase {
     final summaryByMeetingId = {
       for (final s in allSummaries) s.meetingId: s.summary,
     };
+    final allUploads = await select(uploadQueue).get();
+    final uploadByMeetingId = {
+      for (final u in allUploads) u.meetingId: u,
+    };
 
     final tagsByMeetingId = <String, List<Tag>>{};
     for (final link in allMeetingTags) {
@@ -269,6 +347,7 @@ class AppDatabase extends _$AppDatabase {
           tags: mTags,
           summarySnippet: snippet,
           markers: decodeMarkers(m.markersJson),
+          uploadEntry: uploadByMeetingId[m.id],
         ),
       );
     }
@@ -310,6 +389,10 @@ class AppDatabase extends _$AppDatabase {
         ? const <Tag>[]
         : await (select(tags)..where((t) => t.id.isIn(tagIds))).get();
 
+    final uploadRow = await (select(uploadQueue)
+          ..where((t) => t.meetingId.equals(id)))
+        .getSingleOrNull();
+
     return MeetingDetailData(
       meeting: meeting,
       speakers: speakerRows,
@@ -332,10 +415,14 @@ class AppDatabase extends _$AppDatabase {
       actionItems: actionRows,
       tags: tagRows,
       markers: decodeMarkers(meeting.markersJson),
+      uploadEntry: uploadRow,
     );
   }
 
-  Future<void> upsertMeetingFromRecording(RecordingItem item) async {
+  Future<void> upsertMeetingFromRecording(
+    RecordingItem item, {
+    String? glossary,
+  }) async {
     final existing = await (select(meetings)
           ..where((t) => t.id.equals(item.id)))
         .getSingleOrNull();
@@ -358,10 +445,19 @@ class AppDatabase extends _$AppDatabase {
           jsonEncode(item.markers.map((m) => m.toJson()).toList()),
         ),
         note: Value(item.note ?? existing?.note),
+        serverMeetingId: Value(existing?.serverMeetingId),
+        glossary: Value(existing?.glossary ?? glossary),
+        statusMessage: Value(existing?.statusMessage),
+        uploadProgress: Value(existing?.uploadProgress ?? 0),
         createdAt: Value(item.createdAt),
         updatedAt: Value(now),
       ),
     );
+  }
+
+  Future<Meeting?> getMeetingById(String meetingId) {
+    return (select(meetings)..where((t) => t.id.equals(meetingId)))
+        .getSingleOrNull();
   }
 
   Future<void> updateMeetingTitle(String meetingId, String newTitle) async {
@@ -371,6 +467,191 @@ class AppDatabase extends _$AppDatabase {
         updatedAt: Value(DateTime.now()),
       ),
     );
+  }
+
+  Future<void> updateMeetingGlossary(String meetingId, String? glossary) async {
+    final trimmed = glossary?.trim();
+    await (update(meetings)..where((t) => t.id.equals(meetingId))).write(
+      MeetingsCompanion(
+        glossary: Value(trimmed == null || trimmed.isEmpty ? null : trimmed),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> updateMeetingLanguage(String meetingId, String language) async {
+    await (update(meetings)..where((t) => t.id.equals(meetingId))).write(
+      MeetingsCompanion(
+        language: Value(language),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> updateMeetingServerState(
+    String meetingId, {
+    String? serverMeetingId,
+    String? status,
+    String? statusMessage,
+    int? uploadProgress,
+  }) async {
+    await (update(meetings)..where((t) => t.id.equals(meetingId))).write(
+      MeetingsCompanion(
+        serverMeetingId: serverMeetingId != null
+            ? Value(serverMeetingId)
+            : const Value.absent(),
+        status: status != null ? Value(status) : const Value.absent(),
+        statusMessage: statusMessage != null
+            ? Value(statusMessage)
+            : const Value.absent(),
+        uploadProgress: uploadProgress != null
+            ? Value(uploadProgress)
+            : const Value.absent(),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> upsertUploadQueueEntry({
+    required String meetingId,
+    required String filePath,
+    required int totalBytes,
+    int uploadedBytes = 0,
+    String status = 'pending',
+    String? lastError,
+    int attempts = 0,
+  }) async {
+    final existing = await (select(uploadQueue)
+          ..where((t) => t.meetingId.equals(meetingId)))
+        .getSingleOrNull();
+    final now = DateTime.now();
+    await into(uploadQueue).insertOnConflictUpdate(
+      UploadQueueCompanion(
+        id: Value(existing?.id ?? 'uq_$meetingId'),
+        meetingId: Value(meetingId),
+        filePath: Value(filePath),
+        totalBytes: Value(totalBytes),
+        uploadedBytes: Value(uploadedBytes),
+        status: Value(status),
+        lastError: Value(lastError),
+        attempts: Value(attempts),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  Future<UploadQueueEntry?> getUploadEntryForMeeting(String meetingId) {
+    return (select(uploadQueue)..where((t) => t.meetingId.equals(meetingId)))
+        .getSingleOrNull();
+  }
+
+  Future<List<UploadQueueEntry>> listPendingUploads() {
+    return (select(uploadQueue)
+          ..where((t) => t.status.isIn(['pending', 'uploading', 'paused']))
+          ..orderBy([(t) => OrderingTerm.asc(t.updatedAt)]))
+        .get();
+  }
+
+  Future<List<Meeting>> listProcessingMeetings() {
+    return (select(meetings)
+          ..where(
+            (t) =>
+                t.isDeleted.equals(false) &
+                t.status.isIn(['Queued', 'Transcribing']),
+          ))
+        .get();
+  }
+
+  Future<void> updateUploadProgress({
+    required String meetingId,
+    required int uploadedBytes,
+    required int totalBytes,
+    String? status,
+    String? lastError,
+    bool clearError = false,
+    int? attempts,
+  }) async {
+    final existing = await getUploadEntryForMeeting(meetingId);
+    if (existing == null) return;
+    await (update(uploadQueue)..where((t) => t.meetingId.equals(meetingId)))
+        .write(
+      UploadQueueCompanion(
+        uploadedBytes: Value(uploadedBytes),
+        totalBytes: Value(totalBytes),
+        status: status != null ? Value(status) : const Value.absent(),
+        lastError: clearError
+            ? const Value(null)
+            : (lastError != null ? Value(lastError) : const Value.absent()),
+        attempts: attempts != null ? Value(attempts) : const Value.absent(),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> replaceMeetingTranscript({
+    required String meetingId,
+    required List<TranscriptSegmentDraft> segmentDrafts,
+    String? detectedLanguage,
+  }) async {
+    await transaction(() async {
+      await (delete(transcriptSegments)
+            ..where((t) => t.meetingId.equals(meetingId)))
+          .go();
+      await (delete(speakers)..where((t) => t.meetingId.equals(meetingId)))
+          .go();
+
+      final speakerIdsByLabel = <String, String>{};
+      for (final draft in segmentDrafts) {
+        final label =
+            draft.speakerLabel.trim().isEmpty ? 'Speaker 1' : draft.speakerLabel;
+        if (!speakerIdsByLabel.containsKey(label)) {
+          final spkId =
+              'spk_${meetingId}_${speakerIdsByLabel.length + 1}';
+          speakerIdsByLabel[label] = spkId;
+          await into(speakers).insert(
+            SpeakersCompanion.insert(
+              id: spkId,
+              meetingId: meetingId,
+              label: label,
+              displayName: label,
+            ),
+          );
+        }
+      }
+
+      for (var i = 0; i < segmentDrafts.length; i++) {
+        final draft = segmentDrafts[i];
+        final label =
+            draft.speakerLabel.trim().isEmpty ? 'Speaker 1' : draft.speakerLabel;
+        await into(transcriptSegments).insert(
+          TranscriptSegmentsCompanion.insert(
+            id: draft.id,
+            meetingId: meetingId,
+            speakerId: Value(speakerIdsByLabel[label]),
+            startSec: draft.startSec,
+            endSec: draft.endSec,
+            textContent: draft.textContent,
+            edited: const Value(false),
+            sortOrder: Value(i),
+            avgLogprob: Value(draft.avgLogprob),
+            noSpeechProb: Value(draft.noSpeechProb),
+            isLoopFlagged: Value(draft.isLoopFlagged),
+          ),
+        );
+      }
+
+      await (update(meetings)..where((t) => t.id.equals(meetingId))).write(
+        MeetingsCompanion(
+          status: const Value('Ready'),
+          statusMessage: const Value('Transcript ready.'),
+          uploadProgress: const Value(100),
+          language: detectedLanguage != null
+              ? Value(detectedLanguage)
+              : const Value.absent(),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    });
   }
 
   Future<void> setMeetingSoftDeleted(String meetingId, bool deleted) async {
@@ -533,6 +814,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteAllData() async {
     await transaction(() async {
+      await delete(uploadQueue).go();
       await delete(meetingTags).go();
       await delete(tags).go();
       await delete(actionItems).go();

@@ -1,8 +1,14 @@
 package com.izzdzikri.minit
 
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -135,6 +141,12 @@ class MinitNativeBridge(
 
             "isNetworkOnline" -> {
                 result.success(checkNetworkOnline())
+            }
+
+            "showTranscriptReadyNotification" -> {
+                val meetingId = call.argument<String>("meetingId") ?: ""
+                val title = call.argument<String>("title") ?: "Meeting"
+                result.success(showTranscriptReadyNotification(meetingId, title))
             }
 
             else -> result.notImplemented()
@@ -464,6 +476,52 @@ class MinitNativeBridge(
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(fallback)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun showTranscriptReadyNotification(meetingId: String, title: String): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+
+        return try {
+            val manager =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "minit_transcripts"
+            val channel = NotificationChannel(
+                channelId,
+                "Transcript notifications",
+                NotificationManager.IMPORTANCE_DEFAULT,
+            )
+            manager.createNotificationChannel(channel)
+
+            val launchIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra("meetingId", meetingId)
+            }
+            val reqCode = meetingId.hashCode() and 0x7FFFFFFF
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                reqCode,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+
+            val notification = Notification.Builder(context, channelId)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Transcript ready")
+                .setContentText(title)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build()
+
+            manager.notify(10000 + (reqCode % 50000), notification)
             true
         } catch (_: Exception) {
             false

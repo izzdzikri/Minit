@@ -24,6 +24,7 @@ MeetingDetailData _buildSampleDetail({
     isDeleted: false,
     markersJson: '[]',
     note: null,
+    uploadProgress: 0,
     createdAt: created,
     updatedAt: created,
   );
@@ -55,6 +56,7 @@ MeetingDetailData _buildSampleDetail({
         textContent: 'Morning team, kita start dengan review bajet hari ini.',
         edited: false,
         sortOrder: 0,
+        isLoopFlagged: false,
       ),
     ),
     TranscriptSegmentWithSpeaker(
@@ -68,6 +70,7 @@ MeetingDetailData _buildSampleDetail({
         textContent: 'Okay, mockup sudah siap for user testing #sprint-1.',
         edited: true,
         sortOrder: 1,
+        isLoopFlagged: false,
       ),
     ),
   ];
@@ -87,6 +90,7 @@ MeetingDetailData _buildSampleDetail({
               'architecture trade-offs, performance targets, and testing milestones.',
           edited: false,
           sortOrder: i + 2,
+          isLoopFlagged: false,
         ),
       ),
     );

@@ -29,8 +29,11 @@ class MeetingRepository {
     return recovered;
   }
 
-  Future<void> saveRecordedMeeting(RecordingItem item) async {
-    await _db.upsertMeetingFromRecording(item);
+  Future<void> saveRecordedMeeting(
+    RecordingItem item, {
+    String? glossary,
+  }) async {
+    await _db.upsertMeetingFromRecording(item, glossary: glossary);
   }
 
   Future<List<MeetingListItem>> listMeetings({String query = ''}) {
@@ -43,6 +46,14 @@ class MeetingRepository {
 
   Future<void> renameMeeting(String id, String title) {
     return _db.updateMeetingTitle(id, title);
+  }
+
+  Future<void> updateGlossary(String id, String? glossary) {
+    return _db.updateMeetingGlossary(id, glossary);
+  }
+
+  Future<void> updateLanguage(String id, String language) {
+    return _db.updateMeetingLanguage(id, language);
   }
 
   Future<void> softDeleteMeeting(String id) {

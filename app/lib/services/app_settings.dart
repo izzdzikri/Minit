@@ -11,25 +11,74 @@ enum OtherAppAudioBehavior {
   pause,
 }
 
-/// Persisted user preferences shared between the UI and foreground service.
+const String defaultMeetingGlossary =
+    'ChatGPT, benchmark, decision tree, synthetic data, missing values, imbalance';
+
+const String defaultServerUrl = 'http://localhost:8000';
+
+String normalizeLanguageCode(String? raw) {
+  final value = (raw ?? 'ms').trim().toLowerCase();
+  return switch (value) {
+    'en' => 'en',
+    'auto' => 'auto',
+    'ms' || 'mixed' => 'ms',
+    _ => 'ms',
+  };
+}
+
+/// Persisted non-secret user preferences shared between UI and recording service.
+/// The API bearer token is stored separately in Android Keystore via `SecureTokenStorage`.
 class AppSettings {
   const AppSettings({
     this.themePreference = ThemeMode.system,
-    this.defaultLanguage = 'auto',
+    this.defaultLanguage = 'ms',
     this.otherAppAudioBehavior = OtherAppAudioBehavior.keepRecording,
     this.forceRecordMode = false,
+    this.serverUrl = defaultServerUrl,
+    this.wifiOnlyUpload = true,
+    this.autoUpload = true,
+    this.defaultGlossary = defaultMeetingGlossary,
+    this.consentedServerUrl,
   });
 
   final ThemeMode themePreference;
   final String defaultLanguage;
   final OtherAppAudioBehavior otherAppAudioBehavior;
   final bool forceRecordMode;
+  final String serverUrl;
+  final bool wifiOnlyUpload;
+  final bool autoUpload;
+  final String defaultGlossary;
+  final String? consentedServerUrl;
+
+  bool hasConsentedFor(String targetServerUrl) {
+    final normTarget = normalizeServerUrl(targetServerUrl);
+    final consented = consentedServerUrl;
+    if (consented == null || consented.isEmpty || normTarget.isEmpty) {
+      return false;
+    }
+    return normalizeServerUrl(consented) == normTarget;
+  }
+
+  static String normalizeServerUrl(String raw) {
+    var trimmed = raw.trim();
+    while (trimmed.endsWith('/')) {
+      trimmed = trimmed.substring(0, trimmed.length - 1);
+    }
+    return trimmed;
+  }
 
   AppSettings copyWith({
     ThemeMode? themePreference,
     String? defaultLanguage,
     OtherAppAudioBehavior? otherAppAudioBehavior,
     bool? forceRecordMode,
+    String? serverUrl,
+    bool? wifiOnlyUpload,
+    bool? autoUpload,
+    String? defaultGlossary,
+    String? consentedServerUrl,
+    bool clearConsentedServerUrl = false,
   }) {
     return AppSettings(
       themePreference: themePreference ?? this.themePreference,
@@ -37,6 +86,13 @@ class AppSettings {
       otherAppAudioBehavior:
           otherAppAudioBehavior ?? this.otherAppAudioBehavior,
       forceRecordMode: forceRecordMode ?? this.forceRecordMode,
+      serverUrl: serverUrl ?? this.serverUrl,
+      wifiOnlyUpload: wifiOnlyUpload ?? this.wifiOnlyUpload,
+      autoUpload: autoUpload ?? this.autoUpload,
+      defaultGlossary: defaultGlossary ?? this.defaultGlossary,
+      consentedServerUrl: clearConsentedServerUrl
+          ? null
+          : (consentedServerUrl ?? this.consentedServerUrl),
     );
   }
 
@@ -45,6 +101,11 @@ class AppSettings {
         'defaultLanguage': defaultLanguage,
         'otherAppAudioBehavior': otherAppAudioBehavior.name,
         'forceRecordMode': forceRecordMode,
+        'serverUrl': serverUrl,
+        'wifiOnlyUpload': wifiOnlyUpload,
+        'autoUpload': autoUpload,
+        'defaultGlossary': defaultGlossary,
+        'consentedServerUrl': consentedServerUrl,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -55,7 +116,9 @@ class AppSettings {
         (e) => e.name == themeName,
         orElse: () => ThemeMode.system,
       ),
-      defaultLanguage: json['defaultLanguage'] as String? ?? 'auto',
+      defaultLanguage: normalizeLanguageCode(
+        json['defaultLanguage'] as String?,
+      ),
       otherAppAudioBehavior: OtherAppAudioBehavior.values.firstWhere(
         (e) => e.name == behaviorName,
         orElse: () => OtherAppAudioBehavior.keepRecording,
@@ -63,6 +126,14 @@ class AppSettings {
       forceRecordMode: json['forceRecordMode'] as bool? ??
           json['forceRecord'] as bool? ??
           false,
+      serverUrl: (json['serverUrl'] as String?)?.trim().isNotEmpty == true
+          ? AppSettings.normalizeServerUrl(json['serverUrl'] as String)
+          : defaultServerUrl,
+      wifiOnlyUpload: json['wifiOnlyUpload'] as bool? ?? true,
+      autoUpload: json['autoUpload'] as bool? ?? true,
+      defaultGlossary:
+          json['defaultGlossary'] as String? ?? defaultMeetingGlossary,
+      consentedServerUrl: json['consentedServerUrl'] as String?,
     );
   }
 }

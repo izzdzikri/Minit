@@ -105,6 +105,21 @@ class NativeBridge {
     }
   }
 
+  static Future<bool> showTranscriptReadyNotification({
+    required String meetingId,
+    required String title,
+  }) async {
+    try {
+      final posted = await _method.invokeMethod<bool>(
+        'showTranscriptReadyNotification',
+        {'meetingId': meetingId, 'title': title},
+      );
+      return posted ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Stream<Map<String, dynamic>> audioEventsStream() {
     _cachedStream ??= _events.receiveBroadcastStream().map((event) {
       if (event is Map) {

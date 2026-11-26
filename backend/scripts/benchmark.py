@@ -18,10 +18,10 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import wave
 from dataclasses import asdict, dataclass
 from pathlib import Path
-import time
 
 MODEL_SIZES = ("base", "small", "medium")
 LANGUAGE_SETTINGS: tuple[tuple[str, str | None], ...] = (
