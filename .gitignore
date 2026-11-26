@@ -36,6 +36,7 @@ venv/
 storage/
 *.sqlite
 *.db
+backend/benchmark_out/
 
 # Audio and user data
 *.m4a
